@@ -6,7 +6,6 @@ services:
   - docker
 
 install:
-  - cd eth # change directory to project root
   - npm install
   - npm install -g truffle
   - docker build --build-arg DEV_CHAIN=true -f Dockerfile -t geth-devnet https://github.com/cpurta/geth-devnet.git

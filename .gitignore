@@ -100,4 +100,4 @@ ENV/
 .mypy_cache/
 
 node_modules/
-eth/package-lock.json
+package-lock.json

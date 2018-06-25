@@ -1,12 +1,12 @@
-# cChannel (WIP)
+# cChannel-eth (WIP)
 
-[![Build Status](https://travis-ci.com/celer-network/cChannel.svg?token=367o3XxBHVpEHCQyniUK&branch=master)](https://travis-ci.com/celer-network/cChannel)
+[![Build Status](https://travis-ci.com/celer-network/cChannel-eth.svg?token=367o3XxBHVpEHCQyniUK&branch=master)](https://travis-ci.com/celer-network/cChannel-eth)
 
 ## Overview
-cChannel is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
+cChannel-eth is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
 
 ## Release Features
-* **Single-contract Multiple-token Support:** supports multiple Ethereum token standards in different channels under one single cChannel contract.
+* **Single-contract Multiple-token Support:** supports multiple Ethereum token standards in different channels under one single contract.
 * **Ether Support:** users can specify ETH to create an Ether-based channel.
 * **ERC20 Token Support:** users can specify an ERC20 token to create an ERC20-based channel.
 * **ERC827 Token Support:** users can specify an ERC827 token to create an ERC827-based channel.
@@ -32,12 +32,12 @@ cChannel is a collection of smart contracts acting as the binding of cChannel ab
 Wait for deploy.
 
 ## Solidity Version
-Solidity `^0.4.22` or above is required to run cChannel's Ethereum contracts.
+Solidity `^0.4.22` or above is required to run cChannel-eth contracts.
 
-## Test cChannel Locally
+## Test cChannel-eth Locally
 1. Install node v8.9 or above: [https://nodejs.org]().
 2. Install Docker CE 18.03.1-ce or above: [https://www.docker.com/community-edition]().
-3. Go to cChannel's root directory. 
+3. Go to cChannel-eth's root directory. 
 4. Install the node dependencies in the local node_modules folder. 
 <pre>
 npm install
@@ -52,7 +52,7 @@ docker build --build-arg DEV_CHAIN=true -f Dockerfile -t geth-devnet https://git
 docker run -d -p 8545:8545 geth-devnet
 sleep 30 # to make sure docker container is ready before compiling
 </pre>
-7. Use truffle to compile, migrate and test cChannel contracts. 
+7. Use truffle to compile, migrate and test cChannel-eth contracts. 
 <pre>
 truffle compile
 truffle migration
@@ -65,4 +65,4 @@ truffle test
 * Function `authOpenChannel()` only supports ETH deposit for now.
 
 ## License
-You can view our [license here](https://github.com/celer-network/cChannel/blob/master/LICENSE).
+You can view our [license here](https://github.com/celer-network/cChannel-eth/blob/master/LICENSE).

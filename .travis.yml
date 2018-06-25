@@ -1,0 +1,21 @@
+sudo: required
+language: node_js
+node_js:
+  - "10"
+services:
+  - docker
+
+install:
+  - cd eth # change directory to project root
+  - npm install
+  - npm install -g truffle
+  - docker build --build-arg DEV_CHAIN=true -f Dockerfile -t geth-devnet https://github.com/cpurta/geth-devnet.git
+
+script:
+  - docker run -d -p 8545:8545 geth-devnet
+  - sleep 30 # to make sure docker container is ready before compiling
+  - rm -rf build
+  - truffle compile --all
+  - truffle migrate --network development --reset
+  - truffle test
+  

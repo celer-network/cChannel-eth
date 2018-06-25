@@ -1,2 +1,68 @@
-# cChannel-eth
-Ethereum Binding of Celer Network cChannel
+# cChannel (WIP)
+
+[![Build Status](https://travis-ci.com/celer-network/cChannel.svg?token=367o3XxBHVpEHCQyniUK&branch=master)](https://travis-ci.com/celer-network/cChannel)
+
+## Overview
+cChannel is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
+
+## Release Features
+* **Single-contract Multiple-token Support:** supports multiple Ethereum token standards in different channels under one single cChannel contract.
+* **Ether Support:** users can specify ETH to create an Ether-based channel.
+* **ERC20 Token Support:** users can specify an ERC20 token to create an ERC20-based channel.
+* **ERC827 Token Support:** users can specify an ERC827 token to create an ERC827-based channel.
+* **Generalized State Channel:** resolves conditional state dependency by relying on dependent virtual channels.
+* **Boolean Condition Interface:** defines the condition that returns boolean value.
+* **Value Assignment Condition Interface:** defines the condition that returns value assignment.
+* **Boolean AND Resolution Logic:** resolves ConditionGroup based on a simple boolean AND logic.
+* **Boolean Circuit:** resolves ConditionGroup based on a boolean circuit logic.
+* **Single-transaction Channel Opening:** opens channel with a single on-chain transaction through authorized withdrawal message.
+* **Dynamic Withdraw:** withdraws fund before channel finalized as long as no participants disagree during challenge period.
+* **Cooperative Dynamic Withdraw:** skips challenge period and withdraws fund before channel finalized when all participants reach an agreement.
+* **Cooperative Settle:** skips challenge period and settles a channel when all participants reach an agreement.
+
+## Core Concepts
+* **Peers:** channel participants.
+* **State:** a piece of data stored in the channel agreed by channel participants.
+* **State Proof:** serves as a bridge data structure between on-chain contracts and off-chain communication protocols.
+* **Condition:** data structure representing the basic unit of conditional dependency.
+* **Condition Group:** a higher-level abstraction for a group of conditions to express generalized state dependencies.
+* **Off-chain Address Translator:** establishes the mapping from off-chain address to on-chain address.
+
+## Testnet
+Wait for deploy.
+
+## Solidity Version
+Solidity `^0.4.22` or above is required to run cChannel's Ethereum contracts.
+
+## Test cChannel Locally
+1. Install node v8.9 or above: [https://nodejs.org]().
+2. Install Docker CE 18.03.1-ce or above: [https://www.docker.com/community-edition]().
+3. Go to cChannel's root directory. 
+4. Install the node dependencies in the local node_modules folder. 
+<pre>
+npm install
+</pre> 
+5. Install truffle (`sudo` permission might be needed). 
+<pre>
+npm install -g truffle
+</pre> 
+6. Setup a PoA private net. A detailed instruction is available at [https://github.com/cpurta/geth-devnet](), or you can simply use the following commands (`sudo` permissions might be needed). 
+<pre>
+docker build --build-arg DEV_CHAIN=true -f Dockerfile -t geth-devnet https://github.com/cpurta/geth-devnet.git
+docker run -d -p 8545:8545 geth-devnet
+sleep 30 # to make sure docker container is ready before compiling
+</pre>
+7. Use truffle to compile, migrate and test cChannel contracts. 
+<pre>
+truffle compile
+truffle migration
+truffle test
+</pre> 
+
+## Known Issues
+* The current version of truffle doesn’t support function overloading. This release uses different names for deposit functions for now and waits for support of future truffle version.
+* Contract cannot work correctly on ethereumjs-vm due to js vm bug on opcode.
+* Function `authOpenChannel()` only supports ETH deposit for now.
+
+## License
+You can view our [license here](https://github.com/celer-network/cChannel/blob/master/LICENSE).

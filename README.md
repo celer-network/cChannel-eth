@@ -5,6 +5,9 @@
 ## Overview
 cChannel-eth is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
 
+For more detailed specification, please refer to [cChannel Generalized State Channel Specification](https://www.celer.network/doc/cChannel_spec.pdf). 
+For the full white paper about Celer Network, please refer to [Celer Network Whitepaper](https://www.celer.network/doc/CelerNetwork-Whitepaper.pdf).
+
 ## Release Features
 * **Single-contract Multiple-token Support:** supports multiple Ethereum token standards in different channels under one single contract.
 * **Ether Support:** users can specify ETH to create an Ether-based channel.

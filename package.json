@@ -1,7 +1,6 @@
 {
   "dependencies": {
     "npm": "^6.1.0",
-    "openzeppelin-solidity": "^1.9.0",
     "protobufjs": "^6.8.6",
     "truffle-hdwallet-provider": "^0.0.5",
     "web3": "^1.0.0-beta.34"

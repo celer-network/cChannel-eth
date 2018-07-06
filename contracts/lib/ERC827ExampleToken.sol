@@ -1,6 +1,6 @@
 pragma solidity ^0.4.21;
 
-import "openzeppelin-solidity/contracts/token/ERC827/ERC827Token.sol";
+import "./external/openzeppelin-solidity/contracts/token/ERC827/ERC827Token.sol";
 
 contract ERC827ExampleToken is ERC827Token {
     string public name = "ERC827ExampleToken";

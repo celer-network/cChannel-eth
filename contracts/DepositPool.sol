@@ -1,6 +1,6 @@
 pragma solidity ^0.4.21;
 
-import "./lib/external/SafeMath.sol";
+import "./lib/external/openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "./lib/data/cChannelObject.sol";
 
 

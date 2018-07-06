@@ -1,15 +1,15 @@
 pragma solidity ^0.4.21;
 
-import "./lib/external/SafeMath.sol";
-import "./lib/external/MerkleProof.sol";
+import "./lib/external/openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "./lib/external/openzeppelin-solidity/contracts/MerkleProof.sol";
 import "./lib/data/cChannelObject.sol";
 import "./lib/BooleanCondInterface.sol";
 import "./lib/GenericCondInterface.sol";
 import "./lib/VirtualChannelResolverInterface.sol";
 import "./lib/DepositPoolInterface.sol";
-import "openzeppelin-solidity/contracts/AddressUtils.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "openzeppelin-solidity/contracts/token/ERC827/ERC827.sol";
+import "./lib/external/openzeppelin-solidity/contracts/AddressUtils.sol";
+import "./lib/external/openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
+import "./lib/external/openzeppelin-solidity/contracts/token/ERC827/ERC827.sol";
 
 
 contract GenericConditionalChannel {

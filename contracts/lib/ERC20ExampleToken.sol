@@ -1,6 +1,6 @@
 pragma solidity ^0.4.21;
 
-import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol";
+import "./external/openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol";
 
 contract ERC20ExampleToken is StandardToken {
     string public name = "ERC20ExampleToken";

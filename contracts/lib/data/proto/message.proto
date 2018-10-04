@@ -1,0 +1,148 @@
+// Copyright 2018 Celer Network
+
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "network.celer.goceler.msg";
+option java_outer_classname = "MessageProto";
+option go_package = "github.com/celer-network/goCeler/rpc";
+
+package rpc;
+
+import "chain.proto";
+
+enum MsgType {
+  REGISTER_STREAM = 0;
+  H_CONDITIONAL_PAYMENT = 1;
+  H_CHANNEL_UPDATE = 2;
+  H_ACK_STATE = 3;
+  H_DISPUTE = 4;
+  H_OPEN_CHANNEL = 11;
+  F_ACK_CONDITIONAL_PAYMENT = 5;
+  F_REVEAL_CONDITION = 6;
+  F_EXCHANGE_STATE = 7;
+  F_ACK_STATE = 8;
+  R_UPDATE_APP_STATE = 9;
+  R_ACK_UPDATE_APP_STATE = 10;
+}
+
+// Next Tag: 8
+message HopMsg {
+  MsgType type = 1;
+  HopHdr hop_hdr = 2;
+  CondPaymentMsg cond_pay_msg = 3;
+  ChannelUpdateMsg channel_update_msg = 4;
+  AckStateMsg ack_state_msg = 5;
+  DisputeMsg dispute_msg = 6;
+  OpenChannelMsg open_channel_msg = 7;
+}
+
+// Next Tag: 7
+message FlowMsg {
+  MsgType type = 1;
+  FlowHdr flow_hdr = 2;
+  AckCondMsg ack_cond_msg = 3;
+  RevealCondMsg reveal_cond_msg = 4;
+  StateProofMsg state_proof_msg = 5;
+  AckStateMsg ack_state_msg = 6;
+}
+
+// Next Tag: 5
+message RelayMsg {
+  MsgType type = 1;
+  FlowHdr flow_hdr = 2;
+  UpdateAppState update_app_state = 3;
+  AckUpdateAppState ack_update_app_state = 4;
+}
+
+// Next Tag: 3
+message OpenChannelMsg {
+  AuthorizedWithdraw authorized_withdraw = 1;
+  repeated bytes sigs = 2;
+}
+
+// ideally we should differentiate between client intents and actual state.
+// not a big difference for now. may need review later.
+enum AppState {
+  START_APP = 0;
+  EXIT_APP = 1;
+}
+
+// from client to Relay server to indicate intent of which app
+// to run or exit, at start time, client doesn't know other parties
+// Next Tag: 4
+message UpdateAppState {
+  AppState app_state = 1;
+  bytes app_id = 2;
+  uint64 nonce = 3;  // used for exit app from client
+}
+
+// after matching players, relay server sends this to all participants.
+// Next Tag: 5
+message AckUpdateAppState {
+  AppState app_state = 1;
+  bytes app_id = 2;
+  uint64 nonce = 3;   // assume monotonicaly incremented
+  repeated bytes parties = 4;  // user id eg. eth addr
+}
+
+// header info for flow src/dst, could be eth addr
+// Next Tag: 3
+message FlowHdr {
+  bytes src = 1;
+  bytes dst = 2;
+}
+
+// Next Tag: 3
+message HopHdr {
+  bytes src = 1;
+  bytes dst = 2;
+}
+
+// Next Tag: 3
+message StateProofMsg {
+  StateProof state_proof = 1;
+  repeated bytes sigs = 2;
+}
+
+// Next Tag: 3
+message CondPaymentMsg {
+  FlowHdr flow_hdr = 1;
+  ChannelUpdateMsg channel_update_msg = 2;
+}
+
+// Next Tag: 4
+message ChannelUpdateMsg {
+  StateProofMsg state_proof_msg = 1;
+  repeated ConditionGroup added_conditions = 2;
+  repeated CondCombo removed_cond_combos = 3;
+}
+
+// Next Tag: 4
+message CondCombo {
+  uint64 condition_id = 1;
+  ConditionGroup cond_group = 2;
+  StateProofMsg state_proof_msg = 3;
+}
+
+// Next Tag: 2
+message RevealCondMsg {
+  repeated CondCombo cond_combos = 1;
+}
+
+// Next Tag: 4
+message AckCondMsg {
+  repeated ConditionGroup added_conditions = 1;
+  repeated ConditionGroup removed_conditions = 2;
+  bytes signature = 3;
+}
+
+// Next Tag: 2
+message AckStateMsg {
+  StateProofMsg state_proof_msg = 1;
+}
+
+// Next Tag: 2
+message DisputeMsg {
+  repeated CondCombo removed_cond_combos = 1;
+}

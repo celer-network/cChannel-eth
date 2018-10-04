@@ -1,7 +1,7 @@
 const protobuf = require("protobufjs");
 
 module.exports = async () =>
-  protobuf.load(`${__dirname}/solidity.proto`)
+  protobuf.load(`${__dirname}/../../contracts/lib/data/proto/solidity.proto`)
     .then(function (root) {
       const address = root.lookupType("solidity.address");
       const bytes32 = root.lookupType("solidity.bytes32");

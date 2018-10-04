@@ -1,15 +1,14 @@
 pragma solidity ^0.4.21;
 
-import "./lib/external/SafeMath.sol";
-import "./lib/external/MerkleProof.sol";
+import "./lib/external/openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "./lib/external/openzeppelin-solidity/contracts/MerkleProof.sol";
 import "./lib/data/cChannelObject.sol";
 import "./lib/BooleanCondInterface.sol";
 import "./lib/GenericCondInterface.sol";
 import "./lib/VirtualChannelResolverInterface.sol";
 import "./lib/DepositPoolInterface.sol";
-import "openzeppelin-solidity/contracts/AddressUtils.sol";
-import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
-import "openzeppelin-solidity/contracts/token/ERC827/ERC827.sol";
+import "./lib/external/openzeppelin-solidity/contracts/AddressUtils.sol";
+import "./lib/external/openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
 
 contract GenericConditionalChannel {
@@ -24,7 +23,7 @@ contract GenericConditionalChannel {
 
     enum ResolutionLogic { Generic, PaymentBooleanAnd, PaymentBooleanCircuit, StateUpdateBooleanCircuit }
     enum AddressType { Virtual, OnChain }
-    enum TokenType { ETH, ERC20, ERC827 }
+    enum TokenType { ETH, ERC20 }
 
     event OpenChannel(
         uint channelId,
@@ -136,12 +135,6 @@ contract GenericConditionalChannel {
             require(_tokenContract.isContract());
 
             return TokenType.ERC20;
-        } else if (_tokenType == uint(TokenType.ERC827)) {
-            // Is non-0x0 check repeated?
-            require(_tokenContract != 0x0);
-            require(_tokenContract.isContract());
-
-            return TokenType.ERC827;
         } else {
             assert(false);
         }
@@ -187,8 +180,10 @@ contract GenericConditionalChannel {
         public payable
     {
         pbRpcAuthorizedWithdraw.Data memory authWithdraw = pbRpcAuthorizedWithdraw.decode(_authWithdraw);
+        
         require(authWithdraw.peers[0] == msg.sender);
         require(authWithdraw.values[0] == msg.value);
+
         // 0 for TokenType.ETH
         openChannel(authWithdraw.peers, _withdrawalTimeout, _settleTimeoutIncrement, 0x0, 0);
         depositPool.authorizedWithdraw(_authWithdraw, _signature);
@@ -197,6 +192,7 @@ contract GenericConditionalChannel {
         for (uint i = 0; i < authWithdraw.peers.length; i++) {
             c.depositMap[authWithdraw.peers[i]] = authWithdraw.values[i];
         }
+        emit Deposit(channelLength - 1, authWithdraw.peers, authWithdraw.values);
     }
 
     function() public payable { }
@@ -231,13 +227,16 @@ contract GenericConditionalChannel {
         emit Deposit(_channelId, c.peers, balances);
     }
 
-    // ERC20, ERC827 support for deposit
-    // TODO: overload deposit function.
-    // Wait for truffle's support for function overloading: https://github.com/trufflesuite/truffle/issues/737
-    // function deposit(uint _channelId, address _receipient, uint _amount) public {
+    /**
+     * ERC20 support for deposit
+     * Removed ERC827 support because of this issue: https://github.com/OpenZeppelin/openzeppelin-solidity/issues/1044
+     * TODO: overload deposit function.
+     * Wait for truffle's support for function overloading: https://github.com/trufflesuite/truffle/issues/737
+     * function deposit(uint _channelId, address _receipient, uint _amount) public {
+     */
     function depositERCToken(uint _channelId, address _receipient, uint _amount) public onlyOpenChannel(_channelId) {
         Channel storage c = channelMap[_channelId];
-        require(c.tokenType == TokenType.ERC20 || c.tokenType == TokenType.ERC827);
+        require(c.tokenType == TokenType.ERC20);
         require(c.peerMap[_receipient]);
 
         //enable dynamic deposit
@@ -252,15 +251,13 @@ contract GenericConditionalChannel {
         // get the tokens
         if (c.tokenType == TokenType.ERC20) {
             require(ERC20(c.tokenContract).transferFrom(msg.sender, address(this), _amount));
-        } else if (c.tokenType == TokenType.ERC827) {
-            require(ERC827(c.tokenContract).transferFrom(msg.sender, address(this), _amount));
         } else {
             assert(false);
         }
     }
 
     function intendWithdraw(uint _channelId, uint _amount) public onlyOpenChannel(_channelId) {
-        // There is no difference between ETH, ERC20 and ERC827 under this function
+        // There is no difference between ETH, ERC20 under this function
 
         Channel storage c = channelMap[_channelId];
         require(c.peerMap[msg.sender]);
@@ -287,10 +284,6 @@ contract GenericConditionalChannel {
         } else if (c.tokenType == TokenType.ERC20) {
             // ERC20 support
             require(ERC20(c.tokenContract).transfer(msg.sender, w.amount));
-            return;
-        } else if (c.tokenType == TokenType.ERC827) {
-            // ERC827 support
-            require(ERC827(c.tokenContract).transfer(msg.sender, w.amount));
             return;
         } else {
             assert(false);
@@ -330,10 +323,6 @@ contract GenericConditionalChannel {
         } else if (c.tokenType == TokenType.ERC20) {
             // ERC20 support
             require(ERC20(c.tokenContract).transfer(receiver, amount));
-            return;
-        } else if (c.tokenType == TokenType.ERC827) {
-            // ERC827 support
-            require(ERC827(c.tokenContract).transfer(receiver, amount));
             return;
         } else {
             assert(false);
@@ -436,15 +425,6 @@ contract GenericConditionalChannel {
                 require(tokenContractERC20.transfer(c.peers[i], c.settleBalance[c.peers[i]]));
             }
             return;
-        } else if (c.tokenType == TokenType.ERC827) {
-            // ERC827 support
-            emit ConfirmSettle(_channelId);
-            
-            ERC827 tokenContractERC827 = ERC827(c.tokenContract);
-            for (i = 0; i < c.peers.length; i++) {
-                require(tokenContractERC827.transfer(c.peers[i], c.settleBalance[c.peers[i]]));
-            }
-            return;
         } else {
             assert(false);
         }
@@ -503,15 +483,6 @@ contract GenericConditionalChannel {
             ERC20 tokenContractERC20 = ERC20(c.tokenContract);
             for (i = 0; i < c.peers.length; i++) {
                 require(tokenContractERC20.transfer(c.peers[i], c.settleBalance[c.peers[i]]));
-            }
-            return;
-        } else if (c.tokenType == TokenType.ERC827) {
-            // ERC827 support
-            emit CooperativeSettle(_channelId);
-            
-            ERC827 tokenContractERC827 = ERC827(c.tokenContract);
-            for (i = 0; i < c.peers.length; i++) {
-                require(tokenContractERC827.transfer(c.peers[i], c.settleBalance[c.peers[i]]));
             }
             return;
         } else {

@@ -99,5 +99,6 @@ ENV/
 # mypy
 .mypy_cache/
 
+# my gitignore
 node_modules/
-eth/package-lock.json
+package-lock.json

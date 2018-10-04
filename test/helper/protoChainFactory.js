@@ -152,30 +152,6 @@ module.exports = async (peers, genericChannel) => {
       .toJSON().data;
   };
 
-  const getOtherSignatureBytes = async ({ messageBytes }) => {
-    const messageHash = web3.utils.keccak256(
-      web3.utils.bytesToHex(messageBytes)
-    );
-
-    const signature = await calculateSignature(peers[1], messageHash);
-    const multiSignature = {
-      v: [
-        solidity.uint256.create({ data: [signature.v] })
-      ],
-      r: [
-        solidity.bytes32.create({ data: signature.r })
-      ],
-      s: [
-        solidity.bytes32.create({ data: signature.s })
-      ]
-    };
-    const multiSignatureProto = MultiSignature.create(multiSignature);
-
-    return MultiSignature.encode(multiSignatureProto)
-      .finish()
-      .toJSON().data;
-  };
-
   const getAllSignatureBytes = async ({ messageBytes }) => {
     const messageHash = web3.utils.keccak256(
       web3.utils.bytesToHex(messageBytes)
@@ -210,7 +186,7 @@ module.exports = async (peers, genericChannel) => {
   });
   const cooperativeWithdrawProofBytes = getCooperativeWithdrawProofBytes({});
   const authorizedWithdrawBytes = getAuthorizedWithdrawBytes();
-  const authorizedWithdrawSignatureBytes = await getOtherSignatureBytes({
+  const authorizedWithdrawSignatureBytes = await getAllSignatureBytes({
     messageBytes: authorizedWithdrawBytes
   });
 

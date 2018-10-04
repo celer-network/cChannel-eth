@@ -1,7 +1,7 @@
 const protobuf = require("protobufjs");
 
 module.exports = async () =>
-  protobuf.load(`${__dirname}/cChannelObject.proto`)
+  protobuf.load(`${__dirname}/../../contracts/lib/data/proto/chain.proto`)
     .then(function (root) {
       const AuthorizedWithdraw = root.lookupType("rpc.AuthorizedWithdraw");
       const StateProof = root.lookupType("rpc.StateProof");

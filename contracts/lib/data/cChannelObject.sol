@@ -8,7 +8,10 @@ library pbRpcAuthorizedWithdraw{
     address[] peers;
     uint256[] values;
     address withdrawAddress;
-    uint256 nonce;             
+    uint256[] withdrawalTimeout;
+    uint256 settleTimeoutIncrement;
+    address tokenContract;
+    uint256 tokenType;             
   }                           
   // Decoder section                       
   function decode(bytes bs) internal constant returns (Data) {
@@ -23,7 +26,7 @@ library pbRpcAuthorizedWithdraw{
   function _decode(uint p, bytes bs, uint sz)                   
       internal constant returns (Data, uint) {             
     Data memory r;                                          
-    uint[5] memory counters;                                  
+    uint[8] memory counters;                                  
     uint fieldId;                                               
     _pb.WireType wireType;                                      
     uint bytesRead;                                             
@@ -39,12 +42,19 @@ library pbRpcAuthorizedWithdraw{
       else if(fieldId == 3)       
           p += _read_withdrawAddress(p, bs, r, counters);
       else if(fieldId == 4)       
-          p += _read_nonce(p, bs, r, counters);
+          p += _read_withdrawalTimeout(p, bs, nil(), counters);
+      else if(fieldId == 5)       
+          p += _read_settleTimeoutIncrement(p, bs, r, counters);
+      else if(fieldId == 6)       
+          p += _read_tokenContract(p, bs, r, counters);
+      else if(fieldId == 7)       
+          p += _read_tokenType(p, bs, r, counters);
       else revert();                                              
     }                                                          
     p = offset;                                                 
     r.peers = new address[](counters[1]);
     r.values = new uint256[](counters[2]);
+    r.withdrawalTimeout = new uint256[](counters[4]);
                                                     
     while(p < offset+sz) {                                     
       (fieldId, wireType, bytesRead) = _pb._decode_key(p, bs);  
@@ -57,14 +67,20 @@ library pbRpcAuthorizedWithdraw{
       else if(fieldId == 3)       
           p += _read_withdrawAddress(p, bs, nil(), counters);
       else if(fieldId == 4)       
-          p += _read_nonce(p, bs, nil(), counters);
+          p += _read_withdrawalTimeout(p, bs, r, counters);
+      else if(fieldId == 5)       
+          p += _read_settleTimeoutIncrement(p, bs, nil(), counters);
+      else if(fieldId == 6)       
+          p += _read_tokenContract(p, bs, nil(), counters);
+      else if(fieldId == 7)       
+          p += _read_tokenType(p, bs, nil(), counters);
       else revert();                                             
     }                                                          
     return (r, sz);                                             
   }                                                            
                             
   // field readers                       
-  function _read_peers(uint p, bytes bs, Data r, uint[5] counters) internal constant returns (uint) {                            
+  function _read_peers(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_sol_address(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[1] += 1;                                            
@@ -74,7 +90,7 @@ library pbRpcAuthorizedWithdraw{
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_values(uint p, bytes bs, Data r, uint[5] counters) internal constant returns (uint) {                            
+  function _read_values(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_sol_uint256(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[2] += 1;                                            
@@ -84,7 +100,7 @@ library pbRpcAuthorizedWithdraw{
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_withdrawAddress(uint p, bytes bs, Data r, uint[5] counters) internal constant returns (uint) {                            
+  function _read_withdrawAddress(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_sol_address(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[3] += 1;                                            
@@ -94,13 +110,43 @@ library pbRpcAuthorizedWithdraw{
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_nonce(uint p, bytes bs, Data r, uint[5] counters) internal constant returns (uint) {                            
+  function _read_withdrawalTimeout(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_sol_uint256(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[4] += 1;                                            
     } else {                                                         
-      r.nonce = x;                                         
+      r.withdrawalTimeout[ r.withdrawalTimeout.length - counters[4] ] = x;                                         
       if(counters[4] > 0) counters[4] -= 1;                      
+    }                                                                
+    return sz;                                                       
+  }                                                                 
+  function _read_settleTimeoutIncrement(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_sol_uint256(p, bs);                                  
+    if(isNil(r)) {                                                  
+      counters[5] += 1;                                            
+    } else {                                                         
+      r.settleTimeoutIncrement = x;                                         
+      if(counters[5] > 0) counters[5] -= 1;                      
+    }                                                                
+    return sz;                                                       
+  }                                                                 
+  function _read_tokenContract(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_sol_address(p, bs);                                  
+    if(isNil(r)) {                                                  
+      counters[6] += 1;                                            
+    } else {                                                         
+      r.tokenContract = x;                                         
+      if(counters[6] > 0) counters[6] -= 1;                      
+    }                                                                
+    return sz;                                                       
+  }                                                                 
+  function _read_tokenType(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_sol_uint256(p, bs);                                  
+    if(isNil(r)) {                                                  
+      counters[7] += 1;                                            
+    } else {                                                         
+      r.tokenType = x;                                         
+      if(counters[7] > 0) counters[7] -= 1;                      
     }                                                                
     return sz;                                                       
   }                                                                 
@@ -113,7 +159,10 @@ library pbRpcAuthorizedWithdraw{
     output.peers = input.peers;                           
     output.values = input.values;                           
     output.withdrawAddress = input.withdrawAddress;                           
-    output.nonce = input.nonce;                           
+    output.withdrawalTimeout = input.withdrawalTimeout;                           
+    output.settleTimeoutIncrement = input.settleTimeoutIncrement;                           
+    output.tokenContract = input.tokenContract;                           
+    output.tokenType = input.tokenType;                           
   }                                                                   
              
   //utility functions                                           
@@ -605,6 +654,7 @@ library pbRpcCondition{
   struct Data {   
     uint64 id;
     uint64 timeout;
+    uint32 conditionType;
     bytes32 dependingContractAddress;
     uint32 addressType;
     bytes argsQueryFinalization;
@@ -623,7 +673,7 @@ library pbRpcCondition{
   function _decode(uint p, bytes bs, uint sz)                   
       internal constant returns (Data, uint) {             
     Data memory r;                                          
-    uint[7] memory counters;                                  
+    uint[8] memory counters;                                  
     uint fieldId;                                               
     _pb.WireType wireType;                                      
     uint bytesRead;                                             
@@ -637,12 +687,14 @@ library pbRpcCondition{
       else if(fieldId == 2)       
           p += _read_timeout(p, bs, r, counters);
       else if(fieldId == 3)       
-          p += _read_dependingContractAddress(p, bs, r, counters);
+          p += _read_conditionType(p, bs, r, counters);
       else if(fieldId == 4)       
-          p += _read_addressType(p, bs, r, counters);
+          p += _read_dependingContractAddress(p, bs, r, counters);
       else if(fieldId == 5)       
-          p += _read_argsQueryFinalization(p, bs, r, counters);
+          p += _read_addressType(p, bs, r, counters);
       else if(fieldId == 6)       
+          p += _read_argsQueryFinalization(p, bs, r, counters);
+      else if(fieldId == 7)       
           p += _read_argsQueryResult(p, bs, r, counters);
       else revert();                                              
     }                                                          
@@ -657,12 +709,14 @@ library pbRpcCondition{
       else if(fieldId == 2)       
           p += _read_timeout(p, bs, nil(), counters);
       else if(fieldId == 3)       
-          p += _read_dependingContractAddress(p, bs, nil(), counters);
+          p += _read_conditionType(p, bs, nil(), counters);
       else if(fieldId == 4)       
-          p += _read_addressType(p, bs, nil(), counters);
+          p += _read_dependingContractAddress(p, bs, nil(), counters);
       else if(fieldId == 5)       
-          p += _read_argsQueryFinalization(p, bs, nil(), counters);
+          p += _read_addressType(p, bs, nil(), counters);
       else if(fieldId == 6)       
+          p += _read_argsQueryFinalization(p, bs, nil(), counters);
+      else if(fieldId == 7)       
           p += _read_argsQueryResult(p, bs, nil(), counters);
       else revert();                                             
     }                                                          
@@ -670,7 +724,7 @@ library pbRpcCondition{
   }                                                            
                             
   // field readers                       
-  function _read_id(uint p, bytes bs, Data r, uint[7] counters) internal constant returns (uint) {                            
+  function _read_id(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_uint64(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[1] += 1;                                            
@@ -680,7 +734,7 @@ library pbRpcCondition{
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_timeout(uint p, bytes bs, Data r, uint[7] counters) internal constant returns (uint) {                            
+  function _read_timeout(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_uint64(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[2] += 1;                                            
@@ -690,43 +744,53 @@ library pbRpcCondition{
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_dependingContractAddress(uint p, bytes bs, Data r, uint[7] counters) internal constant returns (uint) {                            
-    var (x, sz) = _pb._decode_sol_bytes32(p, bs);                                  
+  function _read_conditionType(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_uint32(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[3] += 1;                                            
     } else {                                                         
-      r.dependingContractAddress = x;                                         
+      r.conditionType = x;                                         
       if(counters[3] > 0) counters[3] -= 1;                      
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_addressType(uint p, bytes bs, Data r, uint[7] counters) internal constant returns (uint) {                            
-    var (x, sz) = _pb._decode_uint32(p, bs);                                  
+  function _read_dependingContractAddress(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_sol_bytes32(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[4] += 1;                                            
     } else {                                                         
-      r.addressType = x;                                         
+      r.dependingContractAddress = x;                                         
       if(counters[4] > 0) counters[4] -= 1;                      
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_argsQueryFinalization(uint p, bytes bs, Data r, uint[7] counters) internal constant returns (uint) {                            
-    var (x, sz) = _pb._decode_bytes(p, bs);                                  
+  function _read_addressType(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_uint32(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[5] += 1;                                            
     } else {                                                         
-      r.argsQueryFinalization = x;                                         
+      r.addressType = x;                                         
       if(counters[5] > 0) counters[5] -= 1;                      
     }                                                                
     return sz;                                                       
   }                                                                 
-  function _read_argsQueryResult(uint p, bytes bs, Data r, uint[7] counters) internal constant returns (uint) {                            
+  function _read_argsQueryFinalization(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
     var (x, sz) = _pb._decode_bytes(p, bs);                                  
     if(isNil(r)) {                                                  
       counters[6] += 1;                                            
     } else {                                                         
-      r.argsQueryResult = x;                                         
+      r.argsQueryFinalization = x;                                         
       if(counters[6] > 0) counters[6] -= 1;                      
+    }                                                                
+    return sz;                                                       
+  }                                                                 
+  function _read_argsQueryResult(uint p, bytes bs, Data r, uint[8] counters) internal constant returns (uint) {                            
+    var (x, sz) = _pb._decode_bytes(p, bs);                                  
+    if(isNil(r)) {                                                  
+      counters[7] += 1;                                            
+    } else {                                                         
+      r.argsQueryResult = x;                                         
+      if(counters[7] > 0) counters[7] -= 1;                      
     }                                                                
     return sz;                                                       
   }                                                                 
@@ -738,6 +802,7 @@ library pbRpcCondition{
   function store(Data memory input, Data storage output) internal{
     output.id = input.id;                           
     output.timeout = input.timeout;                           
+    output.conditionType = input.conditionType;                           
     output.dependingContractAddress = input.dependingContractAddress;                           
     output.addressType = input.addressType;                           
     output.argsQueryFinalization = input.argsQueryFinalization;                           

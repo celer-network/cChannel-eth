@@ -13,9 +13,10 @@ import "message.proto";
 
 // Interface exported by the server.
 service Rpc {
+  rpc CelerOpenChannel(HopMsg) returns (HopMsg) {}
+  rpc CelerGetPeerStatus(PeerAddress) returns (PeerStatus) {}
   // A Bidirectional streaming RPC.
   rpc CelerHop(stream HopMsg) returns (stream HopMsg) {}
   rpc CelerFlow(stream FlowMsg) returns (stream FlowMsg) {}
   rpc Relay(stream RelayMsg) returns (stream RelayMsg) {}
 }
-

@@ -91,12 +91,14 @@ message AckUpdateAppState {
 message FlowHdr {
   bytes src = 1;
   bytes dst = 2;
+  bytes src_sig = 3;
 }
 
 // Next Tag: 3
 message HopHdr {
   bytes src = 1;
   bytes dst = 2;
+  bytes src_sig = 3;
 }
 
 // Next Tag: 3
@@ -118,11 +120,12 @@ message ChannelUpdateMsg {
   repeated CondCombo removed_cond_combos = 3;
 }
 
-// Next Tag: 4
+// Next Tag: 5
 message CondCombo {
   uint64 condition_id = 1;
   ConditionGroup cond_group = 2;
   StateProofMsg state_proof_msg = 3;
+  Condition condition = 4;
 }
 
 // Next Tag: 2
@@ -145,4 +148,12 @@ message AckStateMsg {
 // Next Tag: 2
 message DisputeMsg {
   repeated CondCombo removed_cond_combos = 1;
+}
+
+message PeerAddress {
+  string address = 1;
+}
+
+message PeerStatus {
+  string free_balance = 1;
 }

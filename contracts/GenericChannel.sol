@@ -9,6 +9,7 @@ import "./lib/VirtualChannelResolverInterface.sol";
 import "./lib/DepositPoolInterface.sol";
 import "./lib/external/openzeppelin-solidity/contracts/AddressUtils.sol";
 import "./lib/external/openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
+import "./lib/external/openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 
 
 contract GenericConditionalChannel {
@@ -20,10 +21,12 @@ contract GenericConditionalChannel {
     using pbRpcConditionGroup for pbRpcConditionGroup.Data;
     using pbRpcCooperativeWithdrawProof for pbRpcCooperativeWithdrawProof.Data;
     using AddressUtils for address;
+    using SafeERC20 for ERC20;
 
     enum ResolutionLogic { Generic, PaymentBooleanAnd, PaymentBooleanCircuit, StateUpdateBooleanCircuit }
     enum AddressType { Virtual, OnChain }
     enum TokenType { ETH, ERC20 }
+    enum ChannelStatus { Uninitialized, Operable, Disputing, Finalized }
 
     event OpenChannel(
         uint channelId,
@@ -35,15 +38,17 @@ contract GenericConditionalChannel {
     event Deposit(
         uint channelId,
         address[] peers,
-        uint[] balances
+        uint[] amounts
     );
 
     event IntendSettle(
-        uint channelId
+        uint channelId,
+        uint stateProofNonce
     );
 
-    event ResolveCondition(
-        uint channelId
+    event ResolveCondGroup(
+        uint channelId,
+        bytes32 condGroupHash
     );
 
     event ConfirmSettle(
@@ -78,8 +83,7 @@ contract GenericConditionalChannel {
     struct Channel {
         uint settleTime;
         uint settleTimeoutIncrement;
-        bool isFinalized;
-        bool initialized;
+        ChannelStatus status;
         address[] sigCheckerArray;
         bytes32[] condCheckerArray;
         pbRpcStateProof.Data stateProof;
@@ -105,8 +109,8 @@ contract GenericConditionalChannel {
     DepositPoolInterface public depositPool;
 
     modifier onlyOpenChannel(uint _channelId) {
-        require(channelMap[_channelId].initialized);
-        require(!channelMap[_channelId].isFinalized);
+        Channel storage c = channelMap[_channelId];
+        require(c.status == ChannelStatus.Operable || c.status == ChannelStatus.Disputing);
         _;
     }
 
@@ -123,23 +127,6 @@ contract GenericConditionalChannel {
         depositPool = DepositPoolInterface(_depositPool);
     }
 
-    function decideTokenType(uint _tokenType, address _tokenContract) internal returns(TokenType) {
-        if (_tokenType == uint(TokenType.ETH)) {
-            // If tokenContract is 0x0, it is just a simple ETH based channel
-            require(_tokenContract == 0x0);
-
-            return TokenType.ETH;
-        } else if (_tokenType == uint(TokenType.ERC20)) {
-            // Is non-0x0 check repeated?
-            require(_tokenContract != 0x0);
-            require(_tokenContract.isContract());
-
-            return TokenType.ERC20;
-        } else {
-            assert(false);
-        }
-    }
-
     function openChannel (
         address[] _peers,
         uint[] _withdrawalTimeout,
@@ -154,7 +141,7 @@ contract GenericConditionalChannel {
 
         Channel storage c = channelMap[channelLength];
         c.settleTimeoutIncrement = _settleTimeoutIncrement;
-        c.initialized = true;
+        c.status = ChannelStatus.Operable;
         c.tokenType = decideTokenType(_tokenType, _tokenContract);
         c.tokenContract = _tokenContract;
 
@@ -172,8 +159,6 @@ contract GenericConditionalChannel {
     }
 
     function authOpenChannel (
-        uint[] _withdrawalTimeout,
-        uint _settleTimeoutIncrement,
         bytes _authWithdraw,
         bytes _signature
     )
@@ -182,33 +167,145 @@ contract GenericConditionalChannel {
         pbRpcAuthorizedWithdraw.Data memory authWithdraw = pbRpcAuthorizedWithdraw.decode(_authWithdraw);
         
         require(authWithdraw.peers[0] == msg.sender);
-        require(authWithdraw.values[0] == msg.value);
+        require(authWithdraw.tokenType == uint(TokenType.ETH) || authWithdraw.tokenType == uint(TokenType.ERC20));
+        if (authWithdraw.tokenType == uint(TokenType.ETH)) {
+            require(authWithdraw.values[0] == msg.value);
+        } else {
+            require(msg.value == 0);
+        }
 
-        // 0 for TokenType.ETH
-        openChannel(authWithdraw.peers, _withdrawalTimeout, _settleTimeoutIncrement, 0x0, 0);
-        depositPool.authorizedWithdraw(_authWithdraw, _signature);
+        openChannel(
+            authWithdraw.peers,
+            authWithdraw.withdrawalTimeout,
+            authWithdraw.settleTimeoutIncrement,
+            authWithdraw.tokenContract,
+            authWithdraw.tokenType
+        );
 
         Channel storage c = channelMap[channelLength - 1];
-        for (uint i = 0; i < authWithdraw.peers.length; i++) {
-            c.depositMap[authWithdraw.peers[i]] = authWithdraw.values[i];
+        bytes32 h = keccak256(_authWithdraw);
+        pbRpcMultiSignature.Data memory sigs = pbRpcMultiSignature.decode(_signature);
+        // TODO: is it safe to open channel first and then check the signatures?
+        require(checkSignature(c, h, sigs));
+
+        c.depositMap[authWithdraw.peers[0]] = authWithdraw.values[0];
+        
+        uint[] memory amounts = new uint[](c.peers.length);
+        amounts[0] = authWithdraw.values[0];
+        emit Deposit(channelLength - 1, c.peers, amounts);
+
+        depositPool.authorizedWithdraw(_authWithdraw, _signature, channelLength - 1);
+        if (authWithdraw.tokenType == uint(TokenType.ERC20)) {
+            ERC20(authWithdraw.tokenContract).safeTransferFrom(msg.sender, address(this), authWithdraw.values[0]);
         }
-        emit Deposit(channelLength - 1, authWithdraw.peers, authWithdraw.values);
     }
 
-    function() public payable { }
-
-    // TODO: is this function secure on the usage of memory/storage? Can this function be simplified?
-    function viewTokenContract(uint _channelId) public view onlyOpenChannel(_channelId) returns(address) {
+    /**
+     * If a public view function fails a require/assert statement, it will
+     * still return 0 rather than revert (because it's not a transaction).
+     * So it makes no sense to use onlyOpenChannel modifier here. But
+     * without a feasible require/assert, if users query an inexistent
+     * channel (namely inexistent fileds), public view function will return
+     * 0. These facts put the responsibility of validating the query
+     * results on users. Users should first check the channel's status 
+     * and make sure the channel is open (Operable or Disputing) before
+     * use getter function to query specific state variables.
+     */
+    function getChannelSettleTime(uint _channelId) public view returns(uint) {
         Channel storage c = channelMap[_channelId];
-        address tokenContract = c.tokenContract;
-        return tokenContract;
+        return c.settleTime;
     }
 
-    // TODO: is this function secure on the usage of memory/storage? Can this function be simplified?
-    function viewTokenType(uint _channelId) public view onlyOpenChannel(_channelId) returns(TokenType) {
+    /**
+     * If a public view function fails a require/assert statement, it will
+     * still return 0 rather than revert (because it's not a transaction).
+     * So it makes no sense to use onlyOpenChannel modifier here. But
+     * without a feasible require/assert, if users query an inexistent
+     * channel (namely inexistent fileds), public view function will return
+     * 0. These facts put the responsibility of validating the query
+     * results on users. Users should first check the channel's status 
+     * and make sure the channel is open (Operable or Disputing) before
+     * use getter function to query specific state variables.
+     */
+    function getTokenContract(uint _channelId) public view returns(address) {
         Channel storage c = channelMap[_channelId];
-        TokenType tokenType = c.tokenType;
-        return tokenType;
+        return c.tokenContract;
+    }
+
+    /**
+     * If a public view function fails a require/assert statement, it will
+     * still return 0 rather than revert (because it's not a transaction).
+     * So it makes no sense to use onlyOpenChannel modifier here. But
+     * without a feasible require/assert, if users query an inexistent
+     * channel (namely inexistent fileds), public view function will return
+     * 0. These facts put the responsibility of validating the query
+     * results on users. Users should first check the channel's status 
+     * and make sure the channel is open (Operable or Disputing) before
+     * use getter function to query specific state variables.
+     */
+    function getTokenType(uint _channelId) public view returns(TokenType) {
+        Channel storage c = channelMap[_channelId];
+        return c.tokenType;
+    }
+
+    /**
+     * TODO: implement a similar function accepting an array of addresses
+     * and return the deposit amounts by batch.
+     * If a public view function fails a require/assert statement, it will
+     * still return 0 rather than revert (because it's not a transaction).
+     * So it makes no sense to use onlyOpenChannel modifier here. But
+     * without a feasible require/assert, if users query an inexistent
+     * channel (namely inexistent fileds), public view function will return
+     * 0. These facts put the responsibility of validating the query
+     * results on users. Users should first check the channel's status 
+     * and make sure the channel is open (Operable or Disputing) before
+     * use getter function to query specific state variables.
+     */
+    function getDepositAmount(uint _channelId, address _peer) public view returns(uint) {
+        Channel storage c = channelMap[_channelId];
+        return c.depositMap[_peer];
+    }
+
+    /**
+     * @dev return one channel's depositMap by returning an address array
+     * and a uint array because solidity can't return an array of struct
+     * for now
+     * @param _channelId ID of the channel to be viewed
+     * @return addresses of peers in the channel
+     * @return corresponding balances of the peers (with matched indexes)
+     * If a public view function fails a require/assert statement, it will
+     * still return 0 rather than revert (because it's not a transaction).
+     * So it makes no sense to use onlyOpenChannel modifier here. But
+     * without a feasible require/assert, if users query an inexistent
+     * channel (namely inexistent fileds), public view function will return
+     * 0. These facts put the responsibility of validating the query
+     * results on users. Users should first check the channel's status 
+     * and make sure the channel is open (Operable or Disputing) before
+     * use getter function to query specific state variables.
+     */
+    function getDepositMap(uint _channelId) public view returns(address[], uint[]) {
+        Channel storage c = channelMap[_channelId];
+        uint[] memory balances = new uint[](c.peers.length);
+        for (uint i = 0; i < c.peers.length; i++) {
+            balances[i] = c.depositMap[c.peers[i]];
+        }
+        return (c.peers, balances);
+    }
+
+    /**
+     * If a public view function fails a require/assert statement, it will
+     * still return 0 rather than revert (because it's not a transaction).
+     * So it makes no sense to use onlyOpenChannel modifier here. But
+     * without a feasible require/assert, if users query an inexistent
+     * channel (namely inexistent fileds), public view function will return
+     * 0. These facts put the responsibility of validating the query
+     * results on users. Users should first check the channel's status 
+     * and make sure the channel is open (Operable or Disputing) before
+     * use getter function to query specific state variables.
+     */
+    function getChannelStatus(uint _channelId) public view returns(ChannelStatus) {
+        Channel storage c = channelMap[_channelId];
+        return c.status;
     }
 
     // ETH deposit
@@ -220,11 +317,10 @@ contract GenericConditionalChannel {
         //enable dynamic deposit
         c.depositMap[_receipient] = c.depositMap[_receipient].add(msg.value);
 
-        uint[] memory balances = new uint[](c.peers.length);
-        for (uint i = 0; i < c.peers.length; i++) {
-            balances[i] = c.depositMap[c.peers[i]];
-        }
-        emit Deposit(_channelId, c.peers, balances);
+        uint[] memory amounts = new uint[](c.peers.length);
+        uint index = getPeerIndex(_channelId, _receipient);
+        amounts[index] = msg.value;
+        emit Deposit(_channelId, c.peers, amounts);
     }
 
     /**
@@ -242,15 +338,15 @@ contract GenericConditionalChannel {
         //enable dynamic deposit
         c.depositMap[_receipient] = c.depositMap[_receipient].add(_amount);
 
-        uint[] memory balances = new uint[](c.peers.length);
-        for (uint i = 0; i < c.peers.length; i++) {
-            balances[i] = c.depositMap[c.peers[i]];
-        }
-        emit Deposit(_channelId, c.peers, balances);
+        uint[] memory amounts = new uint[](c.peers.length);
+        uint index = getPeerIndex(_channelId, _receipient);
+        amounts[index] = _amount;
+        emit Deposit(_channelId, c.peers, amounts);
 
         // get the tokens
         if (c.tokenType == TokenType.ERC20) {
-            require(ERC20(c.tokenContract).transferFrom(msg.sender, address(this), _amount));
+            ERC20(c.tokenContract).safeTransferFrom(msg.sender, address(this), _amount);
+            return;
         } else {
             assert(false);
         }
@@ -283,7 +379,7 @@ contract GenericConditionalChannel {
             return;
         } else if (c.tokenType == TokenType.ERC20) {
             // ERC20 support
-            require(ERC20(c.tokenContract).transfer(msg.sender, w.amount));
+            ERC20(c.tokenContract).safeTransfer(msg.sender, w.amount);
             return;
         } else {
             assert(false);
@@ -322,14 +418,14 @@ contract GenericConditionalChannel {
             return;
         } else if (c.tokenType == TokenType.ERC20) {
             // ERC20 support
-            require(ERC20(c.tokenContract).transfer(receiver, amount));
+            ERC20(c.tokenContract).safeTransfer(receiver, amount);
             return;
         } else {
             assert(false);
         }
     }
 
-    function disputeWithdraw(uint _channelId, uint _withdrawId, bytes dispute) public {
+    function disputeWithdraw(uint _channelId, uint _withdrawId, bytes dispute) public onlyOpenChannel(_channelId) {
         // TODO: implement dispute withdrawal without actually needing to close the channel
         assert(false);
     }
@@ -354,6 +450,7 @@ contract GenericConditionalChannel {
         clearStateMap(c);
         clearCondCheckerHelper(c);
         c.stateProof = candidateStateProof;
+        c.status = ChannelStatus.Disputing;
         if (block.number > c.stateProof.maxCondTimeout) {
             c.settleTime = block.number + c.settleTimeoutIncrement;
         } else {
@@ -361,7 +458,7 @@ contract GenericConditionalChannel {
         }
 
         updateState(c, c.stateProof.state);
-        emit IntendSettle(_channelId);
+        emit IntendSettle(_channelId, c.stateProof.nonce);
     }
 
     function resolveConditionalStateTransition(uint _channelId, bytes32[] _proof, bytes _conditionGroup) public onlyOpenChannel(_channelId) {
@@ -369,7 +466,14 @@ contract GenericConditionalChannel {
         require(block.number < c.settleTime);
 
         bytes32 h = keccak256(_conditionGroup);
+
+        /*
+         * @param _proof Merkle proof containing sibling hashes on the branch from the leaf to the root of the Merkle tree
+         * @param c.stateProof.pendingConditionRoot Merkle root
+         * @param h Leaf of Merkle tree
+         */
         MerkleProof.verifyProof(_proof, c.stateProof.pendingConditionRoot, h);
+        
         registerCond(c, h);
         pbRpcConditionGroup.Data memory condGroup = pbRpcConditionGroup.decode(_conditionGroup);
 
@@ -379,11 +483,11 @@ contract GenericConditionalChannel {
 
         if (condGroup.logicType == uint(ResolutionLogic.PaymentBooleanAnd)) {
             handlePaymentBooleanAnd(c, condGroup);
-            emit ResolveCondition(_channelId);
+            emit ResolveCondGroup(_channelId, h);
             return;
         } else if (condGroup.logicType == uint(ResolutionLogic.Generic)) {
             handlePaymentGeneric(c, condGroup);
-            emit ResolveCondition(_channelId);
+            emit ResolveCondGroup(_channelId, h);
             return;
         }
 
@@ -391,9 +495,12 @@ contract GenericConditionalChannel {
         assert(false);
     }
 
-    function confirmSettle(uint _channelId) public onlyOpenChannel(_channelId) {
+    function confirmSettle(uint _channelId) public {
         // This function should handle invalid state (multiple parties signed invalid states)
         Channel storage c = channelMap[_channelId];
+
+        require(c.status == ChannelStatus.Disputing);
+        require(block.number > c.settleTime);
 
         if (!(validateSettleBalance(c))) {
             emit ConfirmSettleFail(_channelId);
@@ -406,7 +513,7 @@ contract GenericConditionalChannel {
             return;
         }
 
-        c.isFinalized = true;
+        c.status = ChannelStatus.Finalized;
 
         uint i;
         if (c.tokenType == TokenType.ETH) {
@@ -422,7 +529,7 @@ contract GenericConditionalChannel {
             
             ERC20 tokenContractERC20 = ERC20(c.tokenContract);
             for (i = 0; i < c.peers.length; i++) {
-                require(tokenContractERC20.transfer(c.peers[i], c.settleBalance[c.peers[i]]));
+                tokenContractERC20.safeTransfer(c.peers[i], c.settleBalance[c.peers[i]]);
             }
             return;
         } else {
@@ -466,7 +573,7 @@ contract GenericConditionalChannel {
             return;
         }
 
-        c.isFinalized = true;
+        c.status = ChannelStatus.Finalized;
 
         uint i;
         if (c.tokenType == TokenType.ETH) {
@@ -482,12 +589,42 @@ contract GenericConditionalChannel {
             
             ERC20 tokenContractERC20 = ERC20(c.tokenContract);
             for (i = 0; i < c.peers.length; i++) {
-                require(tokenContractERC20.transfer(c.peers[i], c.settleBalance[c.peers[i]]));
+                tokenContractERC20.safeTransfer(c.peers[i], c.settleBalance[c.peers[i]]);
             }
             return;
         } else {
             assert(false);
         }
+    }
+
+    function decideTokenType(uint _tokenType, address _tokenContract) internal view returns(TokenType) {
+        if (_tokenType == uint(TokenType.ETH)) {
+            // If tokenContract is 0x0, it is just a simple ETH based channel
+            require(_tokenContract == 0x0);
+
+            return TokenType.ETH;
+        } else if (_tokenType == uint(TokenType.ERC20)) {
+            // Is non-0x0 check repeated?
+            require(_tokenContract != 0x0);
+            require(_tokenContract.isContract());
+
+            return TokenType.ERC20;
+        } else {
+            assert(false);
+        }
+    }
+
+    function getPeerIndex(uint _channelId, address _peer) internal view returns(uint) {
+        Channel storage c = channelMap[_channelId];
+        require(c.peerMap[_peer]);
+
+        for (uint i = 0; i < c.peers.length; i++) {
+            if (c.peers[i] == _peer) {
+                return i;
+            }
+        }
+
+        assert(false);
     }
 
     function validateSettleBalance(Channel storage c) internal returns(bool) {
@@ -605,6 +742,7 @@ contract GenericConditionalChannel {
         clearSigCheckerHelper(c);
         clearStateMap(c);
         clearCondCheckerHelper(c);
+        c.status = ChannelStatus.Operable;
     }
 
     function checkSignature(Channel storage c, bytes32 h, pbRpcMultiSignature.Data sigs) internal returns(bool) {
@@ -650,7 +788,7 @@ contract GenericConditionalChannel {
         }
     }
 
-    function getCondAddress(pbRpcCondition.Data memory cond) internal returns(address addr) {
+    function getCondAddress(pbRpcCondition.Data memory cond) internal view returns(address addr) {
         // TODO: We need to optimize this: early settlement can be cooperative.
         require(cond.timeout < block.number);
 

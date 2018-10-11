@@ -124,7 +124,7 @@ module.exports = async (peers, genericChannel) => {
       .toJSON().data;
   };
 
-  const getAuthorizedWithdrawBytes = () => {
+  const getAuthorizedWithdrawBytes = ({ tokenContract = '0x0000000000000000000000000000000000000000', tokenType = 0 }) => {
     const authorizedWithdraw = {
       peers: [
         solidity.address.create({
@@ -141,7 +141,15 @@ module.exports = async (peers, genericChannel) => {
       withdrawAddress: solidity.address.create({
         data: web3.utils.hexToBytes(genericChannel)
       }),
-      nonce: solidity.uint256.create({ data: [1] })
+      withdrawalTimeout: [
+        solidity.uint256.create({ data: [1] }),
+        solidity.uint256.create({ data: [1] })
+      ],
+      settleTimeoutIncrement: solidity.uint256.create({ data: [10000] }),
+      tokenContract: solidity.address.create({
+        data: web3.utils.hexToBytes(tokenContract)
+      }),
+      tokenType: solidity.uint256.create({ data: [tokenType] })
     };
 
     const authorizedWithdrawProto = AuthorizedWithdraw.create(
@@ -185,7 +193,7 @@ module.exports = async (peers, genericChannel) => {
     messageBytes: stateProofBytes
   });
   const cooperativeWithdrawProofBytes = getCooperativeWithdrawProofBytes({});
-  const authorizedWithdrawBytes = getAuthorizedWithdrawBytes();
+  const authorizedWithdrawBytes = getAuthorizedWithdrawBytes({});
   const authorizedWithdrawSignatureBytes = await getAllSignatureBytes({
     messageBytes: authorizedWithdrawBytes
   });
@@ -201,6 +209,7 @@ module.exports = async (peers, genericChannel) => {
     cooperativeWithdrawProofBytes,
     authorizedWithdrawBytes,
     getCooperativeStateProofBytes,
-    authorizedWithdrawSignatureBytes
+    authorizedWithdrawSignatureBytes,
+    getAuthorizedWithdrawBytes
   };
 };

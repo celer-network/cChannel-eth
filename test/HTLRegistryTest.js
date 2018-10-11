@@ -16,18 +16,29 @@ contract('HTLRegistry', async accounts => {
 
   it('should be able to resolve secret and check for finalization and satisification', async () => {
     let instance = await reg.deployed();
-    await instance.resolve(web3.utils.toHex('0x01'));
+    const secret = web3.utils.toHex('0x01');
+
+    const blockBefore = await web3.eth.getBlockNumber();
+    const receipt = await instance.resolve(secret);
+    const blockAfter = await web3.eth.getBlockNumber();
+    
+    const {event, args} = receipt.logs[0];
+    assert.equal(event, 'SecretRegistry');
+    assert.equal(args.secret, secret);
+    assert.equal(args.secretHash, web3.utils.soliditySha3(secret));
+    assert.isOk(blockBefore <= args.time && args.time <= blockAfter);
+
     let r1 = await instance.isSatisfied.call(
-      web3.utils.soliditySha3(web3.utils.toHex('0x01'))
+      web3.utils.soliditySha3(secret)
     );
     var block = await web3.eth.getBlockNumber();
     console.log(block);
     let r2 = await instance.isFinalized.call(
-      web3.utils.soliditySha3(web3.utils.toHex('0x01')),
+      web3.utils.soliditySha3(secret),
       block + 100
     );
     let r3 = await instance.isFinalized.call(
-      web3.utils.soliditySha3(web3.utils.toHex('0x01')),
+      web3.utils.soliditySha3(secret),
       block - 100
     );
 

@@ -16,7 +16,28 @@ message AuthorizedWithdraw {
   repeated solidity.address peers = 1;
   repeated solidity.uint256 values = 2;
   solidity.address withdraw_address = 3;
-  solidity.uint256 nonce = 4;
+
+  /*
+    withdrawal_timeout and settle_timeout_increment are not used by
+    DepositPool's authorizedWithdraw but for initializing GenericChannel.
+    Because the information needed by these two operations has much
+    overlapped, in order to avoid signing two similar messages for
+    one authOpenChannel and simplify the code, we use only one message
+    which includes all information in it for now.
+  */
+  repeated solidity.uint256 withdrawal_timeout = 4;
+  solidity.uint256 settle_timeout_increment = 5;
+
+  solidity.address token_contract = 6;
+  
+  /*
+  	pb3sol does not implement enum
+  	use integer type instead
+  	token_type: 0 (ETH)
+  	token_type: 1 (ERC20)
+  	support for more token types to be implemented...
+  */
+  solidity.uint256 token_type = 7;
 }
 
 message StateProof {
@@ -64,11 +85,17 @@ message ConditionGroup {
 message Condition {
   uint64 id = 1;
   uint64 timeout = 2;
+  
+  /*
+  condition_type: 0 (generic condition)
+  condition_type: 1 (boolean condition)
+  */
+  uint32 condition_type = 3;
 
   /* The following fields contain the logic for resolving a condition */
 
   // address of the contarct that resolves the condition
-  solidity.bytes32 depending_contract_address = 3;
+  solidity.bytes32 depending_contract_address = 4;
 
   /*
   	pb3sol does not implement enum
@@ -76,17 +103,17 @@ message Condition {
   	address_type: 0 (off_chain)
   	address_type: 1 (on_chain)
   */  
-  uint32 address_type = 4;
+  uint32 address_type = 5;
 
   // args used to query whether the condition is finalized
-  bytes args_query_finalization = 5;
+  bytes args_query_finalization = 6;
 
   /*
   	args used to query the condion resolution results
   	- query should return True/False for boolean condition
   	- query should return state update for generic condition
   */
-  bytes args_query_result = 6;
+  bytes args_query_result = 7;
 }
 
 // This message can be used as the logic object for PaymentBooleanAnd logic

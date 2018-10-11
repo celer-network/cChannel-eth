@@ -58,8 +58,8 @@ The following is the main code structure of cChannel-eth:
 * Unit test files for corresponding contracts in contracts folder.
 
 ## Test cChannel-eth Locally
-1. Install node v8.9 or above: [https://nodejs.org]().
-2. Install Docker CE 18.03.1-ce or above: [https://www.docker.com/community-edition]().
+1. Install node v8.9 or above: [https://nodejs.org](https://nodejs.org).
+2. Install Docker CE 18.03.1-ce or above: [https://www.docker.com/community-edition](https://www.docker.com/community-edition).
 3. Go to cChannel-eth's root directory. 
 4. Install the node dependencies in the local node_modules folder. 
 <pre>
@@ -69,7 +69,7 @@ npm install
 <pre>
 npm install -g truffle
 </pre> 
-6. Setup a PoA private net. A detailed instruction is available at [https://github.com/cpurta/geth-devnet](), or you can simply use the following commands (`sudo` permissions might be needed). 
+6. Setup a PoA private net. A detailed instruction is available at [https://github.com/cpurta/geth-devnet](https://github.com/cpurta/geth-devnet), or you can simply use the following commands (`sudo` permissions might be needed). 
 <pre>
 docker build --build-arg DEV_CHAIN=true -f Dockerfile -t geth-devnet https://github.com/cpurta/geth-devnet.git
 docker run -d -p 8545:8545 geth-devnet
@@ -85,7 +85,6 @@ truffle test
 ## Known Issues
 * The current version of truffle doesn’t support function overloading. This release uses different names for deposit functions for now and waits for support of future truffle version.
 * Contract cannot work correctly on ethereumjs-vm due to js vm bug on opcode.
-* Function `authOpenChannel()` only supports ETH deposit for now.
 
 ## License
 You can view our [license here](https://github.com/celer-network/cChannel-eth/blob/master/LICENSE).

@@ -6,6 +6,12 @@ contract HTLRegistry is BooleanCond {
 
     mapping(bytes32 => uint) secretTimeMap;
 
+    event SecretRegistry(
+        bytes secret,
+        bytes32 secretHash,
+        uint time
+    );
+
     // function toBytes32(bytes data) internal returns (bytes32) {
     //     uint val;
     //     for (uint i = 0; i < 32; i++)  {
@@ -46,6 +52,7 @@ contract HTLRegistry is BooleanCond {
         bytes32 h = keccak256(secret);
         require(secretTimeMap[h] == 0);
         secretTimeMap[h] = block.number;
+        emit SecretRegistry(secret, h, secretTimeMap[h]);
     }   
 
 }

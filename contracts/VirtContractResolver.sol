@@ -3,6 +3,10 @@ pragma solidity ^0.4.21;
 import "./lib/VirtualChannelResolverInterface.sol";
 
 contract VirtContractResolver is VirtualChannelResolverInterface {
+    event Deploy(
+        bytes32 virtAddr
+    );
+
     mapping(bytes32 => address) virtToRealMap;
 
     function resolve(bytes32 virt) view external returns(address) {
@@ -20,6 +24,7 @@ contract VirtContractResolver is VirtualChannelResolverInterface {
         }
 
         virtToRealMap[virtAddr] = deployedAddress;
+        emit Deploy(virtAddr);
         return true;
     }
 

@@ -1,26 +1,28 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.5.0;
 
-import "./lib/VirtualChannelResolverInterface.sol";
+import "./lib/IVirtContractResolver.sol";
 
-contract VirtContractResolver is VirtualChannelResolverInterface {
-    event Deploy(
-        bytes32 virtAddr
-    );
-
+/**
+ * @title Virtual Contract Resolver contract
+ * @notice Implementation of the Virtual Contract Resolver.
+ * @dev this resolver establishes the mapping from off-chain address to on-chain address
+ */
+contract VirtContractResolver is IVirtContractResolver {
     mapping(bytes32 => address) virtToRealMap;
 
-    function resolve(bytes32 virt) view external returns(address) {
-        require(virtToRealMap[virt] != 0x0);
-        return virtToRealMap[virt];
-    }
-
-    function deploy(bytes _code, uint _nonce) external returns(bool) {
-        bytes32 virtAddr = keccak256(_code, _nonce);
+    /**
+     * @notice Deploy virtual contract to an on-chain address
+     * @param _code bytes of virtual contract code
+     * @param _nonce nonce associated to virtual contract code
+     * @return true if deployment succeeds
+     */
+    function deploy(bytes calldata _code, uint _nonce) external returns(bool) {
+        bytes32 virtAddr = keccak256(abi.encodePacked(_code, _nonce));
         bytes memory c = _code;
-        require(virtToRealMap[virtAddr] == 0x0);
+        require(virtToRealMap[virtAddr] == address(0));
         address deployedAddress;
         assembly {
-            deployedAddress := create(0, add(c, 0x20), mload(c))
+            deployedAddress := create(0, add(c, 32), mload(c))
         }
 
         virtToRealMap[virtAddr] = deployedAddress;
@@ -28,4 +30,13 @@ contract VirtContractResolver is VirtualChannelResolverInterface {
         return true;
     }
 
+    /**
+     * @notice look up the deployed address of a virtual address
+     * @param _virtAddr the virtual address to be looked up
+     * @return the deployed address of the input virtual address
+     */
+    function resolve(bytes32 _virtAddr) external view returns(address) {
+        require(virtToRealMap[_virtAddr] != address(0), 'Nonexistent virtual address');
+        return virtToRealMap[_virtAddr];
+    }
 }

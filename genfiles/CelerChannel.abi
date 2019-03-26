@@ -1,0 +1,563 @@
+[
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "resolver",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "channelNum",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_resolveRequest",
+        "type": "bytes"
+      }
+    ],
+    "name": "resolvePaymentByConditions",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_vouchedPayResult",
+        "type": "bytes"
+      }
+    ],
+    "name": "resolvePaymentByVouchedResult",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "PayInfoMap",
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "name": "resolveDeadline",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "ethPool",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "name": "_ethPool",
+        "type": "address"
+      },
+      {
+        "name": "_virtResolver",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "payable": true,
+    "stateMutability": "payable",
+    "type": "fallback"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "payHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "name": "newAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "UpdatePayResult",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "tokenType",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "name": "tokenAddress",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "peers",
+        "type": "address[2]"
+      },
+      {
+        "indexed": false,
+        "name": "balances",
+        "type": "uint256[2]"
+      }
+    ],
+    "name": "OpenChannel",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "peers",
+        "type": "address[2]"
+      },
+      {
+        "indexed": false,
+        "name": "balances",
+        "type": "uint256[2]"
+      }
+    ],
+    "name": "Deposit",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "seqNums",
+        "type": "uint256[2]"
+      }
+    ],
+    "name": "IntendSettle",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "condPayHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "name": "peerFrom",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "LiquidateCondPay",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "settleBalance",
+        "type": "uint256[2]"
+      }
+    ],
+    "name": "ConfirmSettle",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "ConfirmSettleFail",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "withdrawalAmounts",
+        "type": "uint256[2]"
+      },
+      {
+        "indexed": false,
+        "name": "receiver",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "name": "balances",
+        "type": "uint256[2]"
+      },
+      {
+        "indexed": false,
+        "name": "seqNum",
+        "type": "uint256"
+      }
+    ],
+    "name": "CooperativeWithdraw",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "name": "channelId",
+        "type": "uint64"
+      },
+      {
+        "indexed": false,
+        "name": "settleBalance",
+        "type": "uint256[2]"
+      }
+    ],
+    "name": "CooperativeSettle",
+    "type": "event"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      },
+      {
+        "name": "_recipient",
+        "type": "address"
+      },
+      {
+        "name": "_transferFromAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "deposit",
+    "outputs": [],
+    "payable": true,
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_openRequest",
+        "type": "bytes"
+      }
+    ],
+    "name": "openChannel",
+    "outputs": [],
+    "payable": true,
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_cooperativeWithdrawRequest",
+        "type": "bytes"
+      }
+    ],
+    "name": "cooperativeWithdraw",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_signedSimplexStateArray",
+        "type": "bytes"
+      }
+    ],
+    "name": "intendSettle",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      },
+      {
+        "name": "_peerFrom",
+        "type": "address"
+      },
+      {
+        "name": "_payHashList",
+        "type": "bytes"
+      }
+    ],
+    "name": "liquidatePayment",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "confirmSettle",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "_settleRequest",
+        "type": "bytes"
+      }
+    ],
+    "name": "cooperativeSettle",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "getSettleFinalizedTime",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "getTokenContract",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "getTokenType",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "getChannelStatus",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "getCooperativeWithdrawSeqNum",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      },
+      {
+        "name": "_peer",
+        "type": "address"
+      }
+    ],
+    "name": "getDepositAmount",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "_channelId",
+        "type": "uint64"
+      }
+    ],
+    "name": "getDepositMap",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[2]"
+      },
+      {
+        "name": "",
+        "type": "uint256[2]"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

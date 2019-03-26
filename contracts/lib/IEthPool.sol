@@ -1,0 +1,30 @@
+pragma solidity ^0.5.0;
+
+/**
+ * @title EthPool interface
+ */
+interface IEthPool {
+    function deposit(address _recipient) external payable;
+
+    function withdraw(uint _value) external;
+
+    function approve(address _spender, uint _value) external returns (bool);
+
+    function transferFrom(address _from, address payable _to, uint _value) external returns (bool);
+
+    function increaseAllowance(address _spender, uint _addedValue) external returns (bool);
+
+    function decreaseAllowance(address _spender, uint _subtractedValue) external returns (bool);
+
+    function balanceOf(address _owner) external view returns (uint);
+
+    function allowance(address _owner, address _spender) external view returns (uint);
+
+    event Deposit(address recipient, uint value);
+    
+    event Withdraw(address account, uint value);
+    
+    event Transfer(address indexed from, address indexed to, uint value);
+    
+    event Approval(address indexed owner, address indexed spender, uint value);
+}

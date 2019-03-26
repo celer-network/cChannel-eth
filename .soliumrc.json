@@ -4,10 +4,6 @@
     "security"
   ],
   "rules": {
-    "quotes": [
-      "error",
-      "double"
-    ],
     "indentation": [
       "error",
       4

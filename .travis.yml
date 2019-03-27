@@ -18,7 +18,3 @@ install:
 script:
   - ganache-cli -l 8000000 2> /dev/null 1> /dev/null &
   - truffle test
-
-after_success:
-  # if PR, add json as a new commit
-  - 'if [ "$TRAVIS_PULL_REQUEST" != "false" ]; then bash ./gen_and_push.sh $TRAVIS_PULL_REQUEST $TRAVIS_PULL_REQUEST_BRANCH; fi'

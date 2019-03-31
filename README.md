@@ -1,6 +1,6 @@
 # cChannel-eth (WIP)
 
-[![Build Status](https://travis-ci.com/celer-network/cChannel-eth.svg?token=367o3XxBHVpEHCQyniUK&branch=master)](https://travis-ci.com/celer-network/cChannel-eth)
+[![Build Status](https://travis-ci.org/celer-network/cChannel-eth.svg?branch=master)](https://travis-ci.org/celer-network/cChannel-eth)
 
 * [Overview](https://github.com/celer-network/cChannel-eth#overview)
 * [Work In Progress (WIP) Notice](https://github.com/celer-network/cChannel-eth#work-in-progress-wip-notice)

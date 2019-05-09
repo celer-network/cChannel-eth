@@ -1,0 +1,7 @@
+********** Gas Used in VirtContractResolver Tests **********
+
+***** Deploy Gas Used *****
+VirtContractResolver Deploy Gas: 323727
+
+***** Function Calls Gas Used *****
+deploy(): 281854

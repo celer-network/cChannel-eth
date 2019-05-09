@@ -22,8 +22,7 @@ interface IEthPool {
 
     event Deposit(address recipient, uint value);
     
-    event Withdraw(address account, uint value);
-    
+    // transfer from "from" account inside EthPool to real "to" address outside EthPool
     event Transfer(address indexed from, address indexed to, uint value);
     
     event Approval(address indexed owner, address indexed spender, uint value);

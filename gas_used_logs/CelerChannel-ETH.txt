@@ -1,0 +1,27 @@
+********** Gas Used in CelerChannel-ETH Tests **********
+
+***** Deploy Gas Used *****
+VirtContractResolver Deploy Gas: 323727
+EthPool Deploy Gas: 701516
+PayRegistry Deploy Gas: 2901123
+CelerChannel Deploy Gas: 6555987
+
+***** Function Calls Gas Used *****
+openChannel() with zero deposit: 193366
+setDepositLimits(): 43888
+deposit() via msg.value: 51180
+disableDepositLimits(): 13557
+enableDepositLimits(): 42077
+deposit() via EthPool: 45939
+intendWithdraw(): 92643
+vetoWithdraw(): 22606
+confirmWithdraw(): 31868
+cooperativeWithdraw(): 89267
+intendSettle() with two 2-payment-hashList states: 378737
+liquidatePays() with 2 payments: 43506
+confirmSettle(): 53522
+openChannel() using EthPool and msg.value: 244511
+cooperativeSettle(): 102431
+intendSettle() with a null state: 76326
+intendSettle() with one non-null simplex state with 2 payments: 194186
+snapshotStates() with one non-null simplex state: 126160

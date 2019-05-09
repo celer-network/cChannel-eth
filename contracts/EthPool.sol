@@ -14,13 +14,18 @@ contract EthPool is IEthPool {
 
     mapping (address => uint) private balances;
     mapping (address => mapping (address => uint)) private allowed;
+    
+    // mock ERC20 details to enable etherscan-like tools to monitor EthPool correctly
+    string public constant name = "EthInPool";
+    string public constant symbol = "EthIP";
+    uint8 public constant decimals = 18;
 
     /**
      * @notice Deposit ETH to ETH Pool
      * @param _recipient the address ETH is deposited to 
      */
     function deposit(address _recipient) public payable {
-        require(_recipient != address(0));
+        require(_recipient != address(0), "Recipient address is 0");
 
         balances[_recipient] = balances[_recipient].add(msg.value);
         emit Deposit(_recipient, msg.value);
@@ -31,11 +36,7 @@ contract EthPool is IEthPool {
      * @param _value the amount of ETH to withdraw
      */
     function withdraw(uint _value) public {
-        require(balances[msg.sender] >= _value);
-
-        balances[msg.sender] = balances[msg.sender].sub(_value);
-        emit Withdraw(msg.sender, _value);
-        msg.sender.transfer(_value);
+        _transfer(msg.sender, msg.sender, _value);
     }
 
     /**
@@ -48,7 +49,7 @@ contract EthPool is IEthPool {
      * @param _value The amount of ETH to be spent.
      */
     function approve(address _spender, uint _value) public returns (bool) {
-        require(_spender != address(0));
+        require(_spender != address(0), "Spender address is 0");
 
         allowed[msg.sender][_spender] = _value;
         emit Approval(msg.sender, _spender, _value);
@@ -80,7 +81,7 @@ contract EthPool is IEthPool {
      * @param _addedValue The amount of ETH to increase the allowance by.
      */
     function increaseAllowance(address _spender, uint _addedValue) public returns (bool) {
-        require(_spender != address(0));
+        require(_spender != address(0), "Spender address is 0");
 
         allowed[msg.sender][_spender] = allowed[msg.sender][_spender].add(_addedValue);
         emit Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
@@ -98,7 +99,7 @@ contract EthPool is IEthPool {
      * @param _subtractedValue The amount of ETH to decrease the allowance by.
      */
     function decreaseAllowance(address _spender, uint _subtractedValue) public returns (bool) {
-        require(_spender != address(0));
+        require(_spender != address(0), "Spender address is 0");
 
         allowed[msg.sender][_spender] = allowed[msg.sender][_spender].sub(_subtractedValue);
         emit Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
@@ -106,10 +107,10 @@ contract EthPool is IEthPool {
     }
 
     /**
-    * @notice Gets the balance of the specified address.
-    * @param _owner The address to query the balance of.
-    * @return An uint representing the amount owned by the passed address.
-    */
+     * @notice Gets the balance of the specified address.
+     * @param _owner The address to query the balance of.
+     * @return An uint representing the amount owned by the passed address.
+     */
     function balanceOf(address _owner) public view returns (uint) {
         return balances[_owner];
     }
@@ -125,13 +126,13 @@ contract EthPool is IEthPool {
     }
 
     /**
-    * @notice Transfer ETH for a specified addresses
-    * @param _from The address to transfer from.
-    * @param _to The address to transfer to.
-    * @param _value The amount to be transferred.
-    */
+     * @notice Transfer ETH for a specified addresses
+     * @param _from The address to transfer from.
+     * @param _to The address to transfer to.
+     * @param _value The amount to be transferred.
+     */
     function _transfer(address _from, address payable _to, uint _value) internal {
-        require(_to != address(0));
+        require(_to != address(0), "To address is 0");
 
         balances[_from] = balances[_from].sub(_value);
         emit Transfer(_from, _to, _value);

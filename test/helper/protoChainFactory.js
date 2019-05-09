@@ -3,12 +3,18 @@ const web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8545'));
 const sha3 = web3.utils.keccak256;
 
 const protoChainLoader = require('./protoChainLoader');
+const { signMessage } = require('./sign');
 
 const BooleanCondMock = artifacts.require('BooleanCondMock');
+const NumericCondMock = artifacts.require('NumericCondMock');
+
+const TRUE_PREIMAGE = '0x123456';
 
 // calculate the signature of given address on given hash
 const calculateSignature = async (address, hash) => {
-  const sigHex = await web3.eth.sign(hash, address);
+  // can't directly use web3.eth.sign() because of this issue:
+  // https://github.com/OpenZeppelin/openzeppelin-solidity/pull/1622
+  const sigHex = await signMessage(address, hash);
   const sigBytes = web3.utils.hexToBytes(sigHex);
   return sigBytes;
 };
@@ -40,6 +46,8 @@ module.exports = async (peers, clients) => {
 
   /********** constant vars **********/
   const booleanCondMock = await BooleanCondMock.new();
+  const numericCondMock = await NumericCondMock.new();
+
   const conditionDeployedFalse = {
     conditionType: 1,
     deployedContractAddress: web3.utils.hexToBytes(booleanCondMock.address),
@@ -52,9 +60,18 @@ module.exports = async (peers, clients) => {
     argsQueryResult: [1]
   };
 
+  const getConditionDeployedNumeric = (amount) => {
+    // amount should be a uint8 number
+    return {
+      conditionType: 1,
+      deployedContractAddress: web3.utils.hexToBytes(numericCondMock.address),
+      argsQueryResult: [amount]
+    }
+  }
+
   const conditionHashLock = {
     conditionType: 0,
-    hashLock: web3.utils.hexToBytes(sha3(web3.utils.hexToBytes('0x123456')))
+    hashLock: web3.utils.hexToBytes(sha3(web3.utils.hexToBytes(TRUE_PREIMAGE)))
   }
 
   // TODO: add VIRTUAL_CONTRACT conditions and tests
@@ -144,29 +161,57 @@ module.exports = async (peers, clients) => {
       .toJSON().data;
   }
 
-  // get array of condition protos
+  // shortcut function to get an array of condition protos
   const getConditions = ({
     type
   }) => {
     switch (type) {
-      case 0:  // [conditionDeployedFalse, conditionHashLock]
+      case 0:  // [conditionHashLock, conditionDeployedFalse, conditionDeployedFalse]
         return [
-          Condition.create(conditionDeployedFalse), 
+          Condition.create(conditionHashLock),
+          Condition.create(conditionDeployedFalse),
+          Condition.create(conditionDeployedFalse)
+        ];
+      case 1:  // [conditionHashLock, conditionDeployedFalse, conditionDeployedTrue]
+        return [
+          Condition.create(conditionHashLock),
+          Condition.create(conditionDeployedFalse),
+          Condition.create(conditionDeployedTrue)
+        ];
+      case 2:  // [conditionHashLock, conditionDeployedTrue, conditionDeployedFalse]
+        return [
+          Condition.create(conditionHashLock),
+          Condition.create(conditionDeployedTrue),
+          Condition.create(conditionDeployedFalse)
+        ];
+      case 3:  // [conditionHashLock, conditionDeployedTrue, conditionDeployedTrue]
+        return [
+          Condition.create(conditionHashLock),
+          Condition.create(conditionDeployedTrue),
+          Condition.create(conditionDeployedTrue)
+        ];
+      case 4:  // [conditionHashLock, conditionDeployedTrue, conditionHashLock]
+        return [
+          Condition.create(conditionHashLock),
+          Condition.create(conditionDeployedTrue),
           Condition.create(conditionHashLock)
         ];
-      case 1:  // [conditionDeployedTrue, conditionHashLock]
+      case 5:  // [conditionHashLock, conditionNumeric10, conditionNumeric25]
         return [
-          Condition.create(conditionDeployedTrue), 
-          Condition.create(conditionHashLock)
+          Condition.create(conditionHashLock),
+          Condition.create(getConditionDeployedNumeric(10)),
+          Condition.create(getConditionDeployedNumeric(25))
         ];
+      case 6:  // [conditionHashLock]
+        return [Condition.create(conditionHashLock)];
     }
   }
 
   // get bytes of OpenChannelRequest
   const getOpenChannelRequest = async ({ 
-    CelerChannelAddress,
+    celerChannelAddress,
     openDeadline = 999999, 
-    settleTimeout = 10, 
+    disputeTimeout = 10, 
     tokenAddress = null,
     tokenType = 1, 
     zeroTotalDeposit = false,
@@ -177,7 +222,7 @@ module.exports = async (peers, clients) => {
     if (tokenType == 1) {  // ETH
       paymentChannelInitializerBytes = getPaymentChannelInitializerBytes({
         openDeadline: openDeadline,
-        settleTimeout: settleTimeout,
+        disputeTimeout: disputeTimeout,
         tokenType: tokenType,
         zeroTotalDeposit: zeroTotalDeposit,
         channelPeers: channelPeers,
@@ -186,7 +231,7 @@ module.exports = async (peers, clients) => {
     } else if (tokenType == 2) {  // ERC20
       paymentChannelInitializerBytes = getPaymentChannelInitializerBytes({
         openDeadline: openDeadline, 
-        settleTimeout: settleTimeout,
+        disputeTimeout: disputeTimeout,
         tokenAddress: tokenAddress, 
         tokenType: tokenType,
         zeroTotalDeposit: zeroTotalDeposit,
@@ -197,7 +242,7 @@ module.exports = async (peers, clients) => {
 
     // calculate channelId
     const hash = sha3(
-      paymentChannelInitializerBytes.concat(web3.utils.hexToBytes(CelerChannelAddress))
+      paymentChannelInitializerBytes.concat(web3.utils.hexToBytes(celerChannelAddress))
     );
     const channelId = parseInt(hash.substring(hash.length-16), 16);
 
@@ -207,7 +252,10 @@ module.exports = async (peers, clients) => {
         channelInitializer: paymentChannelInitializerBytes,
       }
     } else {
-      const sigs = await getAllSignatures({messageBytes: paymentChannelInitializerBytes});
+      const sigs = await getAllSignatures({
+        messageBytes: paymentChannelInitializerBytes,
+        signPeers: channelPeers
+      });
   
       openChannelRequest = {
         channelInitializer: paymentChannelInitializerBytes,
@@ -231,7 +279,8 @@ module.exports = async (peers, clients) => {
     seqNum = 1,
     amount = 5,
     receiverAccount = peers[0],
-    withdrawDeadline = 9999999
+    withdrawDeadline = 9999999,
+    recipientChannelId = 0
   }) => {
     const withdraw = {
       account: web3.utils.hexToBytes(receiverAccount),
@@ -243,7 +292,8 @@ module.exports = async (peers, clients) => {
       channelId: channelId,
       seqNum: seqNum,
       withdraw: withdrawProto,
-      withdrawDeadline: withdrawDeadline
+      withdrawDeadline: withdrawDeadline,
+      recipientChannelId: recipientChannelId
     };
     const withdrawInfoProto = CooperativeWithdrawInfo.create(withdrawInfo);
     const withdrawInfoBytes = CooperativeWithdrawInfo.encode(withdrawInfoProto)
@@ -355,7 +405,7 @@ module.exports = async (peers, clients) => {
   // get bytes of PaymentChannelInitializer
   const getPaymentChannelInitializerBytes = ({ 
     openDeadline, 
-    settleTimeout, 
+    disputeTimeout, 
     tokenAddress = null, 
     tokenType, 
     zeroTotalDeposit,
@@ -393,7 +443,7 @@ module.exports = async (peers, clients) => {
     const paymentChannelInitializer = {
       initDistribution: initDistributionProto,
       openDeadline: openDeadline,
-      settleTimeout: settleTimeout,
+      disputeTimeout: disputeTimeout,
       msgValueRecipient: msgValueRecipient
     }
     const paymentChannelInitializerProto = PaymentChannelInitializer.create(
@@ -405,13 +455,13 @@ module.exports = async (peers, clients) => {
   }
 
   // get signatures of both peers on the given message
-  const getAllSignatures = async ({ messageBytes }) => {
+  const getAllSignatures = async ({ messageBytes, signPeers = peers }) => {
     const messageHash = sha3(
       web3.utils.bytesToHex(messageBytes)
     );
 
-    const signature0 = await calculateSignature(peers[0], messageHash);
-    const signature1 = await calculateSignature(peers[1], messageHash);
+    const signature0 = await calculateSignature(signPeers[0], messageHash);
+    const signature1 = await calculateSignature(signPeers[1], messageHash);
     return [signature0, signature1];
   };
 

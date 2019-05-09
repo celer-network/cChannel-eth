@@ -1,15 +1,11 @@
 {
   "dependencies": {
-    "ethereumjs-wallet": "0.6.0",
-    "npm": "^6.1.0",
-    "openzeppelin-solidity": "^2.1.2",
-    "protobufjs": "^6.8.6",
-    "truffle-hdwallet-provider": "^1.0.0-web3one.5",
-    "web3": "^1.0.0-beta.34"
+    "openzeppelin-solidity": "2.1.2",
+    "protobufjs": "6.8.8",
+    "web3": "1.0.0-beta.52"
   },
   "devDependencies": {
     "babel-eslint": "8",
-    "eslint": "4.x",
-    "solidity-coverage": "^0.5.11"
+    "eslint": "4.19.1"
   }
 }

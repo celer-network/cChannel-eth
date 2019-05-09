@@ -396,7 +396,7 @@ library PbEntity {
     struct PaymentChannelInitializer {
         TokenDistribution initDistribution;   // tag: 1
         uint openDeadline;   // tag: 2
-        uint settleTimeout;   // tag: 3
+        uint disputeTimeout;   // tag: 3
         uint msgValueRecipient;   // tag: 4
     } // end struct PaymentChannelInitializer
 
@@ -415,7 +415,7 @@ library PbEntity {
                 m.openDeadline = uint(buf.decVarint());
             }
             else if (tag == 3) {
-                m.settleTimeout = uint(buf.decVarint());
+                m.disputeTimeout = uint(buf.decVarint());
             }
             else if (tag == 4) {
                 m.msgValueRecipient = uint(buf.decVarint());

@@ -4,7 +4,7 @@ option go_package = "github.com/celer-network/goCeler/chain";
 import "google/protobuf/descriptor.proto";
 import "entity.proto";
 
-package chain2;
+package chain;
 
 extend google.protobuf.FieldOptions {
   string soltype = 1002;

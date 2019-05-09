@@ -2,13 +2,22 @@ const Web3 = require('web3');
 const web3 = new Web3(new Web3.providers.HttpProvider('http://localhost:8545'));
 const sha3 = web3.utils.keccak256;
 
+const fs = require('fs');
+
 const protoChainFactory = require('./helper/protoChainFactory');
+
 const utilities = require('./helper/utilities');
-const getSortedArray = utilities.getSortedArray;
-const mineBlockUntil = utilities.mineBlockUntil;
+const {
+  mineBlockUntil,
+  getSortedArray,
+  getDeployGasUsed,
+  getCallGasUsed
+} = utilities;
 
 const PayRegistry = artifacts.require('PayRegistry');
 const Resolver = artifacts.require('VirtContractResolver');
+
+const GAS_USED_LOG = 'gas_used_logs/PayRegistry.txt';
 
 contract('PayRegistry', async accounts => {
   const peers = getSortedArray([accounts[0], accounts[1]]);
@@ -22,8 +31,17 @@ contract('PayRegistry', async accounts => {
   let getVouchedCondPayResultBytes;
 
   before(async () => {
+    fs.writeFileSync(GAS_USED_LOG, '********** Gas Used in PayRegistry Tests **********\n\n');
+
     const resolver = await Resolver.new();
     payRegistry = await PayRegistry.new(resolver.address);
+    
+    fs.appendFileSync(GAS_USED_LOG, '***** Deploy Gas Used *****\n');
+    let gasUsed = await getDeployGasUsed(resolver);
+    fs.appendFileSync(GAS_USED_LOG, 'VirtContractResolver Deploy Gas: ' + gasUsed + '\n');
+    gasUsed = await getDeployGasUsed(payRegistry);
+    fs.appendFileSync(GAS_USED_LOG, 'PayRegistry Deploy Gas: ' + gasUsed + '\n\n');
+    fs.appendFileSync(GAS_USED_LOG, '***** Function Calls Gas Used *****\n');
 
     protoChainInstance = await protoChainFactory(peers, [accounts[9], accounts[9]]);
     getConditions = protoChainInstance.getConditions;
@@ -32,12 +50,13 @@ contract('PayRegistry', async accounts => {
     getVouchedCondPayResultBytes = protoChainInstance.getVouchedCondPayResultBytes;
   });
 
-  it('should resolve pay by conditions correctly when the logic is AND and all conditions are true', async () => {
+  it('should resolve pay by conditions correctly when the logic is BOOLEAN_AND and ' +
+      'all contract conditions are true', async () => {
     const payBytes = getConditionalPayBytes({
       payTimestamp: Date.now(),
       paySrc: accounts[8],
       payDest: accounts[9],
-      conditions: getConditions({type: 1}),
+      conditions: getConditions({type: 3}),
       logicType: 0, // BOOLEAN_AND
       maxAmount: 10,
       resolveDeadline: 999999,
@@ -52,12 +71,19 @@ contract('PayRegistry', async accounts => {
 
     const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
     const {event, args} = tx.logs[0];
+
+    fs.appendFileSync(
+      GAS_USED_LOG,
+      'resolvePaymentByConditions(): ' + getCallGasUsed(tx) + '\n'
+    );
+
     assert.equal(event, 'UpdatePayResult');
     assert.equal(args.payHash, payHash);
     assert.equal(args.newAmount.toString(), 10);
   });
 
-  it('should resolve pay by conditions correctly when the logic is AND and some conditions are false', async () => {
+  it('should resolve pay by conditions correctly when the logic is BOOLEAN_AND and ' +
+      'some contract conditions are false', async () => {
     const payBytes = getConditionalPayBytes({
       payTimestamp: Date.now(),
       paySrc: accounts[8],
@@ -72,7 +98,7 @@ contract('PayRegistry', async accounts => {
     const payHash = sha3(Pay);
     const requestBytes = getResolvePayByConditionsRequestBytes({
       condPayBytes: payBytes,
-      hashPreimages: [web3.utils.hexToBytes(FALSE_PREIMAGE)]
+      hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
     });
 
     const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
@@ -82,12 +108,13 @@ contract('PayRegistry', async accounts => {
     assert.equal(args.newAmount.toString(), 0);
   });
 
-  it('should resolve pay by conditions correctly when the logic is OR and some conditions are true', async () => {
+  it('should resolve pay by conditions correctly when the logic is BOOLEAN_OR and ' +
+      'some contract conditions are true', async () => {
     const payBytes = getConditionalPayBytes({
       payTimestamp: Date.now(),
       paySrc: accounts[8],
       payDest: accounts[9],
-      conditions: getConditions({type: 0}),
+      conditions: getConditions({type: 2}),
       logicType: 1, // BOOLEAN_OR
       maxAmount: 30,
       resolveDeadline: 999999,
@@ -107,7 +134,8 @@ contract('PayRegistry', async accounts => {
     assert.equal(args.newAmount.toString(), 30);
   });
 
-  it('should resolve pay by conditions correctly when the logic is OR and all conditions are false', async () => {
+  it('should resolve pay by conditions correctly when the logic is BOOLEAN_OR and ' +
+      'all contract conditions are false', async () => {
     const payBytes = getConditionalPayBytes({
       payTimestamp: Date.now(),
       paySrc: accounts[8],
@@ -122,7 +150,7 @@ contract('PayRegistry', async accounts => {
     const payHash = sha3(Pay);
     const requestBytes = getResolvePayByConditionsRequestBytes({
       condPayBytes: payBytes,
-      hashPreimages: [web3.utils.hexToBytes(FALSE_PREIMAGE)]
+      hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
     });
 
     const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
@@ -133,20 +161,20 @@ contract('PayRegistry', async accounts => {
   });
 
   it('should resolve pay by vouched result correctly', async () => {
-    commonPayBytes = getConditionalPayBytes({
+    sharedPayBytes = getConditionalPayBytes({
       payTimestamp: 0,
       paySrc: accounts[8],
       payDest: accounts[9],
-      conditions: getConditions({type: 1}),
+      conditions: getConditions({type: 3}),
       logicType: 0, // BOOLEAN_AND
       maxAmount: 100,
       resolveDeadline: 999999,
       resolveTimeout: 10
     });
-    const Pay = web3.utils.bytesToHex(commonPayBytes);
-    commonPayHash = sha3(Pay);
+    const Pay = web3.utils.bytesToHex(sharedPayBytes);
+    sharedPayHash = sha3(Pay);
     const vouchedCondPayResultBytes = await getVouchedCondPayResultBytes({
-      condPay: commonPayBytes,
+      condPay: sharedPayBytes,
       amount: 20,
       src: accounts[8],
       dest: accounts[9]
@@ -154,14 +182,18 @@ contract('PayRegistry', async accounts => {
 
     const tx = await payRegistry.resolvePaymentByVouchedResult(vouchedCondPayResultBytes);
     const {event, args} = tx.logs[0];
+
+    fs.appendFileSync(GAS_USED_LOG, 'resolvePaymentByVouchedResult(): ' + getCallGasUsed(tx) + '\n');
+
     assert.equal(event, 'UpdatePayResult');
-    assert.equal(args.payHash, commonPayHash);
+    assert.equal(args.payHash, sharedPayHash);
     assert.equal(args.newAmount.toString(), 20);
   });
 
-  it('should resolve pay by vouched result correctly when the new result is larger than the old result', async () => {
+  it('should resolve pay by vouched result correctly ' +
+      'when the new result is larger than the old result', async () => {
     const vouchedCondPayResultBytes = await getVouchedCondPayResultBytes({
-      condPay: commonPayBytes,
+      condPay: sharedPayBytes,
       amount: 50,
       src: accounts[8],
       dest: accounts[9]
@@ -170,26 +202,28 @@ contract('PayRegistry', async accounts => {
     const tx = await payRegistry.resolvePaymentByVouchedResult(vouchedCondPayResultBytes);
     const {event, args} = tx.logs[0];
     assert.equal(event, 'UpdatePayResult');
-    assert.equal(args.payHash, commonPayHash);
+    assert.equal(args.payHash, sharedPayHash);
     assert.equal(args.newAmount.toString(), 50);
   });
 
-  it('should resolve pay by conditions correctly when the new result is larger than the old result', async () => {
+  it('should resolve pay by conditions correctly ' +
+      'when the new result is larger than the old result', async () => {
     const requestBytes = getResolvePayByConditionsRequestBytes({
-      condPayBytes: commonPayBytes,
+      condPayBytes: sharedPayBytes,
       hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
     });
 
     const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
     const {event, args} = tx.logs[0];
     assert.equal(event, 'UpdatePayResult');
-    assert.equal(args.payHash, commonPayHash);
+    assert.equal(args.payHash, sharedPayHash);
     assert.equal(args.newAmount.toString(), 100);
   });
 
-  it('should fail to resolve pay by vouched result when the new result is smaller than the old result', async () => {
+  it('should fail to resolve pay by vouched result ' +
+      'when the new result is smaller than the old result', async () => {
     const vouchedCondPayResultBytes = await getVouchedCondPayResultBytes({
-      condPay: commonPayBytes,
+      condPay: sharedPayBytes,
       amount: 50,
       src: accounts[8],
       dest: accounts[9]
@@ -197,9 +231,9 @@ contract('PayRegistry', async accounts => {
 
     try {
       await payRegistry.resolvePaymentByVouchedResult(vouchedCondPayResultBytes);
-    } catch (e) {
+    } catch (error) {
       assert.isAbove(
-        e.message.search('New amount is not larger'),
+        error.message.search('New amount is not larger'),
         -1
       );
       return;
@@ -210,7 +244,7 @@ contract('PayRegistry', async accounts => {
 
   it('should fail to resolve pay by vouched result when exceeding max amount', async () => {
     const vouchedCondPayResultBytes = await getVouchedCondPayResultBytes({
-      condPay: commonPayBytes,
+      condPay: sharedPayBytes,
       amount: 200,
       src: accounts[8],
       dest: accounts[9]
@@ -218,9 +252,9 @@ contract('PayRegistry', async accounts => {
 
     try {
       await payRegistry.resolvePaymentByVouchedResult(vouchedCondPayResultBytes);
-    } catch (e) {
+    } catch (error) {
       assert.isAbove(
-        e.message.search('Exceed max transfer amount'),
+        error.message.search('Exceed max transfer amount'),
         -1
       );
       return;
@@ -247,9 +281,9 @@ contract('PayRegistry', async accounts => {
 
     try {
       await payRegistry.resolvePaymentByConditions(requestBytes);
-    } catch (e) {
+    } catch (error) {
       assert.isAbove(
-        e.message.search('Pay resolve deadline passed'),
+        error.message.search('Pay resolve deadline passed'),
         -1
       );
       return;
@@ -278,9 +312,9 @@ contract('PayRegistry', async accounts => {
   
     try {
       await payRegistry.resolvePaymentByVouchedResult(vouchedCondPayResultBytes);
-    } catch (e) {
+    } catch (error) {
       assert.isAbove(
-        e.message.search('Pay resolve deadline passed'),
+        error.message.search('Pay resolve deadline passed'),
         -1
       );
       return;
@@ -320,9 +354,9 @@ contract('PayRegistry', async accounts => {
   
     try {
       await payRegistry.resolvePaymentByVouchedResult(vouchedCondPayResultBytes1);
-    } catch (e) {
+    } catch (error) {
       assert.isAbove(
-        e.message.search('Resolve timeout'),
+        error.message.search('Resolve timeout'),
         -1
       );
       return;
@@ -360,14 +394,153 @@ contract('PayRegistry', async accounts => {
 
     try {
       await payRegistry.resolvePaymentByConditions(requestBytes);
-    } catch (e) {
+    } catch (error) {
       assert.isAbove(
-        e.message.search('Resolve timeout'),
+        error.message.search('Resolve timeout'),
         -1
       );
       return;
     }
 
     assert.fail('should have thrown before');
+  });
+
+  it('should fail to resolve pay by conditions with a false HASH_LOCK condition', async () => {
+    const payBytes = getConditionalPayBytes({
+      payTimestamp: Date.now(),
+      paySrc: accounts[8],
+      payDest: accounts[9],
+      conditions: getConditions({type: 4}),
+      logicType: 1, // BOOLEAN_OR
+      maxAmount: 200,
+      resolveDeadline: 99999999,
+      resolveTimeout: 10
+    });
+
+    const requestBytes = getResolvePayByConditionsRequestBytes({
+      condPayBytes: payBytes,
+      hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE), web3.utils.hexToBytes(FALSE_PREIMAGE)]
+    });
+
+    try {
+      await payRegistry.resolvePaymentByConditions(requestBytes);
+    } catch (error) {
+      assert.isAbove(
+        error.message.search('Wrong preimage'),
+        -1
+      );
+      return;
+    }
+
+    assert.fail('should have thrown before');
+  });
+
+  it('should resolve pay by conditions correctly when the logic is NUMERIC_ADD', async () => {
+    const payBytes = getConditionalPayBytes({
+      payTimestamp: Date.now(),
+      paySrc: accounts[8],
+      payDest: accounts[9],
+      conditions: getConditions({type: 5}),
+      logicType: 3, // NUMERIC_ADD
+      maxAmount: 50,
+      resolveDeadline: 999999,
+      resolveTimeout: 10
+    });
+    const Pay = web3.utils.bytesToHex(payBytes);
+    const payHash = sha3(Pay);
+    const requestBytes = getResolvePayByConditionsRequestBytes({
+      condPayBytes: payBytes,
+      hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
+    });
+
+    const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
+    const {event, args} = tx.logs[0];
+    assert.equal(event, 'UpdatePayResult');
+    assert.equal(args.payHash, payHash);
+    assert.equal(args.newAmount.toString(), 35);
+  });
+
+  it('should resolve pay by conditions correctly when the logic is NUMERIC_MAX', async () => {
+    const payBytes = getConditionalPayBytes({
+      payTimestamp: Date.now(),
+      paySrc: accounts[8],
+      payDest: accounts[9],
+      conditions: getConditions({type: 5}),
+      logicType: 4, // NUMERIC_MAX
+      maxAmount: 50,
+      resolveDeadline: 999999,
+      resolveTimeout: 10
+    });
+    const Pay = web3.utils.bytesToHex(payBytes);
+    const payHash = sha3(Pay);
+    const requestBytes = getResolvePayByConditionsRequestBytes({
+      condPayBytes: payBytes,
+      hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
+    });
+
+    const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
+    const {event, args} = tx.logs[0];
+    assert.equal(event, 'UpdatePayResult');
+    assert.equal(args.payHash, payHash);
+    assert.equal(args.newAmount.toString(), 25);
+  });
+
+  it('should resolve pay by conditions correctly when the logic is NUMERIC_MIN', async () => {
+    const payBytes = getConditionalPayBytes({
+      payTimestamp: Date.now(),
+      paySrc: accounts[8],
+      payDest: accounts[9],
+      conditions: getConditions({type: 5}),
+      logicType: 5, // NUMERIC_MIN
+      maxAmount: 50,
+      resolveDeadline: 999999,
+      resolveTimeout: 10
+    });
+    const Pay = web3.utils.bytesToHex(payBytes);
+    const payHash = sha3(Pay);
+    const requestBytes = getResolvePayByConditionsRequestBytes({
+      condPayBytes: payBytes,
+      hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
+    });
+
+    const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
+    const {event, args} = tx.logs[0];
+    assert.equal(event, 'UpdatePayResult');
+    assert.equal(args.payHash, payHash);
+    assert.equal(args.newAmount.toString(), 10);
+  });
+
+  it('should resolve pay using max amount with any transfer logic ' +
+      'as long as there are no contract conditions', async () => {
+    const maxAmount = 50;
+    for (var logicType = 0; logicType < 6; logicType++) {
+      if (logicType == 2) {
+        // BOOLEAN_CIRCUIT has not been implemented yet
+        continue;
+      }
+      
+      const payBytes = getConditionalPayBytes({
+        payTimestamp: Date.now(),
+        paySrc: accounts[8],
+        payDest: accounts[9],
+        conditions: getConditions({type: 6}),
+        logicType: logicType,
+        maxAmount: maxAmount,
+        resolveDeadline: 999999,
+        resolveTimeout: 10
+      });
+      const Pay = web3.utils.bytesToHex(payBytes);
+      const payHash = sha3(Pay);
+      const requestBytes = getResolvePayByConditionsRequestBytes({
+        condPayBytes: payBytes,
+        hashPreimages: [web3.utils.hexToBytes(TRUE_PREIMAGE)]
+      });
+  
+      const tx = await payRegistry.resolvePaymentByConditions(requestBytes);
+      const {event, args} = tx.logs[0];
+      assert.equal(event, 'UpdatePayResult');
+      assert.equal(args.payHash, payHash);
+      assert.equal(args.newAmount.toString(), maxAmount);
+    }
   });
 });

@@ -11,7 +11,6 @@ library Pb {
 
     // create a new in-memory Buffer object from raw msg bytes
     function fromBytes(bytes memory raw) internal pure returns (Buffer memory buf) {
-        require(raw.length > 1); // min length of a valid Pb msg is 2
         buf.b = raw;
         buf.idx = 0;
     }
@@ -54,7 +53,7 @@ library Pb {
         }
         uint b; // store current byte content
         v = 0; // reset to 0 for return value
-        for (uint i=0; i<10; ++i) {
+        for (uint i=0; i<10; i++) {
             assembly {
                 b := byte(i, tmp)  // don't use tmp[i] because it does bound check and costs extra
             }

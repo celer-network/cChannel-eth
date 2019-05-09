@@ -19,11 +19,12 @@ contract VirtContractResolver is IVirtContractResolver {
     function deploy(bytes calldata _code, uint _nonce) external returns(bool) {
         bytes32 virtAddr = keccak256(abi.encodePacked(_code, _nonce));
         bytes memory c = _code;
-        require(virtToRealMap[virtAddr] == address(0));
+        require(virtToRealMap[virtAddr] == address(0), "Current real address is not 0");
         address deployedAddress;
         assembly {
             deployedAddress := create(0, add(c, 32), mload(c))
         }
+        require(deployedAddress != address(0), 'Create contract failed.');
 
         virtToRealMap[virtAddr] = deployedAddress;
         emit Deploy(virtAddr);

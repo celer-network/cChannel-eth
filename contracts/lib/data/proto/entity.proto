@@ -165,7 +165,7 @@ message PaymentChannelInitializer {
   // require an ascending order based on addresses of init_distribution.distribution[].account
   TokenDistribution init_distribution = 1;
   uint64 open_deadline = 2 [(soltype) = "uint"];
-  uint64 settle_timeout = 3 [(soltype) = "uint"];
+  uint64 dispute_timeout = 3 [(soltype) = "uint"];
   // index of channel peer who receives the blockchain native token
   // associated with the transaction (msg.value in case of ETH)
   uint64 msg_value_recipient = 4 [(soltype) = "uint"];

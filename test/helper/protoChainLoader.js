@@ -2,15 +2,15 @@ const protobuf = require("protobufjs");
 protobuf.common('google/protobuf/descriptor.proto', {})
 
 module.exports = async () => {
-  chain2 = await protobuf.load(`${__dirname}/../../contracts/lib/data/proto/chain2.proto`);
+  chain = await protobuf.load(`${__dirname}/../../contracts/lib/data/proto/chain.proto`);
   entity = await protobuf.load(`${__dirname}/../../contracts/lib/data/proto/entity.proto`);
 
-  const OpenChannelRequest = chain2.lookupType("chain2.OpenChannelRequest");
-  const CooperativeWithdrawRequest = chain2.lookupType("chain2.CooperativeWithdrawRequest");
-  const CooperativeSettleRequest = chain2.lookupType("chain2.CooperativeSettleRequest");
-  const SignedSimplexState = chain2.lookupType("chain2.SignedSimplexState");
-  const SignedSimplexStateArray = chain2.lookupType("chain2.SignedSimplexStateArray");
-  const ResolvePayByConditionsRequest = chain2.lookupType("chain2.ResolvePayByConditionsRequest");
+  const OpenChannelRequest = chain.lookupType("chain.OpenChannelRequest");
+  const CooperativeWithdrawRequest = chain.lookupType("chain.CooperativeWithdrawRequest");
+  const CooperativeSettleRequest = chain.lookupType("chain.CooperativeSettleRequest");
+  const SignedSimplexState = chain.lookupType("chain.SignedSimplexState");
+  const SignedSimplexStateArray = chain.lookupType("chain.SignedSimplexStateArray");
+  const ResolvePayByConditionsRequest = chain.lookupType("chain.ResolvePayByConditionsRequest");
 
   const PaymentChannelInitializer = entity.lookupType("entity.PaymentChannelInitializer");
   const TokenDistribution = entity.lookupType("entity.TokenDistribution");
@@ -28,7 +28,7 @@ module.exports = async () => {
   const PayHashList = entity.lookupType("entity.PayHashList");
 
   return {
-    // chain2
+    // chain
     OpenChannelRequest,
     CooperativeWithdrawRequest,
     CooperativeSettleRequest,

@@ -1,3 +1,12 @@
+async function getDeployGasUsed(instance) {
+  let receipt = await web3.eth.getTransactionReceipt(instance.transactionHash);
+  return receipt.gasUsed;
+}
+
+function getCallGasUsed(tx) {
+  return tx.receipt.gasUsed;
+}
+
 async function mineBlockUntil(deadline, sendAccount) {
   let block = await web3.eth.getBlock('latest');
   while(block.number <= deadline) {
@@ -53,6 +62,8 @@ function getSortedArray(peers) {
 }
 
 module.exports = {
+  getDeployGasUsed: getDeployGasUsed,
+  getCallGasUsed: getCallGasUsed,
   mineBlockUntil: mineBlockUntil,
   prepareCoSignedIntendSettle: prepareCoSignedIntendSettle,
   getSortedArray: getSortedArray

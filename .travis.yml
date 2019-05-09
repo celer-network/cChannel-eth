@@ -1,10 +1,10 @@
 sudo: required
 language: node_js
 node_js:
-  - "10"
-# cache:
-#   directories:
-#     - node_modules
+  - "10.15.3"
+cache:
+  directories:
+    - node_modules
 install:
   - npm install
   - npm install -g truffle ganache-cli

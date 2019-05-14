@@ -330,11 +330,11 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
 
   // small measurement range
   const stepSmall = 10;
-  const numSmall = 10;
+  const numSmall = 3;  // recommend 10 for finer granularity measurement
   const startSmall = 1;
   // large measurement range
   const stepLarge = 75;
-  const numLarge = 5;
+  const numLarge = 2;  // recommend 5 for finer granularity measurement
   const startLarge = stepSmall * numSmall + startSmall;
 
   // Operable channel status

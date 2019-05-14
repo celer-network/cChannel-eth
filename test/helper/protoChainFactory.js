@@ -90,17 +90,17 @@ module.exports = async (peers, clients) => {
     // Index is consistent with payAmounts.
     let payBytesArray = [];
 
-    for (i = 0; i < payAmounts.length; i++) {
+    for (let i = 0; i < payAmounts.length; i++) {
       payBytesArray[i] = []
     }
 
-    for (i = payAmounts.length - 1; i >= 0; i--) {
+    for (let i = payAmounts.length - 1; i >= 0; i--) {
       let payHashes = [];
       for (j = 0; j < payAmounts[i].length; j++) {
         payBytesArray[i][j] = getConditionalPayBytes({
           payTimestamp: Math.floor(Math.random() * 10000000000),
           paySrc: clients[i],
-          payDest: clients[1-i],
+          payDest: clients[1 - i],
           conditions: [Condition.create(conditionDeployedTrue)],
           maxAmount: payAmounts[i][j]
         });
@@ -114,13 +114,13 @@ module.exports = async (peers, clients) => {
       } else {
         payHashList = {
           payHashes: payHashes,
-          nextListHash: web3.utils.hexToBytes(sha3(payHashListBytesArray[i+1]))
+          nextListHash: web3.utils.hexToBytes(sha3(payHashListBytesArray[i + 1]))
         }
       }
       payHashListProtos[i] = PayHashList.create(payHashList);
       payHashListBytesArray[i] = PayHashList.encode(payHashListProtos[i])
         .finish()
-        .toJSON().data;        
+        .toJSON().data;
     }
     return {
       payHashListProtos: payHashListProtos,
@@ -128,7 +128,7 @@ module.exports = async (peers, clients) => {
       payHashListBytesArray: payHashListBytesArray,
     }
   }
-  
+
   // get bytes of vouched cond pay result
   const getVouchedCondPayResultBytes = async ({
     condPay,
@@ -208,12 +208,12 @@ module.exports = async (peers, clients) => {
   }
 
   // get bytes of OpenChannelRequest
-  const getOpenChannelRequest = async ({ 
+  const getOpenChannelRequest = async ({
     celerChannelAddress,
-    openDeadline = 999999, 
-    disputeTimeout = 10, 
+    openDeadline = 999999,
+    disputeTimeout = 10,
     tokenAddress = null,
-    tokenType = 1, 
+    tokenType = 1,
     zeroTotalDeposit = false,
     channelPeers = peers,
     msgValueRecipient = 0
@@ -230,9 +230,9 @@ module.exports = async (peers, clients) => {
       });
     } else if (tokenType == 2) {  // ERC20
       paymentChannelInitializerBytes = getPaymentChannelInitializerBytes({
-        openDeadline: openDeadline, 
+        openDeadline: openDeadline,
         disputeTimeout: disputeTimeout,
-        tokenAddress: tokenAddress, 
+        tokenAddress: tokenAddress,
         tokenType: tokenType,
         zeroTotalDeposit: zeroTotalDeposit,
         channelPeers: channelPeers,
@@ -244,7 +244,7 @@ module.exports = async (peers, clients) => {
     const hash = sha3(
       paymentChannelInitializerBytes.concat(web3.utils.hexToBytes(celerChannelAddress))
     );
-    const channelId = parseInt(hash.substring(hash.length-16), 16);
+    const channelId = parseInt(hash.substring(hash.length - 16), 16);
 
     let openChannelRequest;
     if (zeroTotalDeposit) {
@@ -256,7 +256,7 @@ module.exports = async (peers, clients) => {
         messageBytes: paymentChannelInitializerBytes,
         signPeers: channelPeers
       });
-  
+
       openChannelRequest = {
         channelInitializer: paymentChannelInitializerBytes,
         sigs: sigs
@@ -274,7 +274,7 @@ module.exports = async (peers, clients) => {
   }
 
   // get bytes of CooperativeWithdrawRequest
-  const getCooperativeWithdrawRequestBytes = async ({ 
+  const getCooperativeWithdrawRequestBytes = async ({
     channelId = 1,
     seqNum = 1,
     amount = 5,
@@ -300,7 +300,7 @@ module.exports = async (peers, clients) => {
       .finish()
       .toJSON().data;
 
-    const sigs = await getAllSignatures({messageBytes: withdrawInfoBytes});
+    const sigs = await getAllSignatures({ messageBytes: withdrawInfoBytes });
 
     const cooperativeWithdrawRequest = {
       withdrawInfo: withdrawInfoBytes,
@@ -326,7 +326,7 @@ module.exports = async (peers, clients) => {
     signers = null
   }) => {
     let signedSimplexStateProtos = [];
-    for (i = 0; i < channelIds.length; i++) {
+    for (let i = 0; i < channelIds.length; i++) {
       if (seqNums[i] > 0) {  // cosigned non-null state
         signedSimplexStateProtos[i] = await getCoSignedSimplexStateProto({
           channelId: channelIds[i],
@@ -343,8 +343,8 @@ module.exports = async (peers, clients) => {
         });
       }
     }
-    
-    const signedSimplexStateArray = {signedSimplexStates: signedSimplexStateProtos};
+
+    const signedSimplexStateArray = { signedSimplexStates: signedSimplexStateProtos };
     const signedSimplexStateArrayProto = SignedSimplexStateArray.create(signedSimplexStateArray);
     return SignedSimplexStateArray.encode(signedSimplexStateArrayProto)
       .finish()
@@ -374,7 +374,7 @@ module.exports = async (peers, clients) => {
       .finish()
       .toJSON().data;
 
-    const sigs = await getAllSignatures({messageBytes: cooperativeSettleInfoBytes});
+    const sigs = await getAllSignatures({ messageBytes: cooperativeSettleInfoBytes });
 
     const cooperativeSettleRequest = {
       settleInfo: cooperativeSettleInfoBytes,
@@ -403,11 +403,11 @@ module.exports = async (peers, clients) => {
 
   /********** internal API **********/
   // get bytes of PaymentChannelInitializer
-  const getPaymentChannelInitializerBytes = ({ 
-    openDeadline, 
-    disputeTimeout, 
-    tokenAddress = null, 
-    tokenType, 
+  const getPaymentChannelInitializerBytes = ({
+    openDeadline,
+    disputeTimeout,
+    tokenAddress = null,
+    tokenType,
     zeroTotalDeposit,
     channelPeers,
     msgValueRecipient
@@ -478,7 +478,7 @@ module.exports = async (peers, clients) => {
         amt: [amount]
       };
     } else {
-      accountAmtPair = {amt: [amount]};      
+      accountAmtPair = { amt: [amount] };
     }
     const accountAmtPairProto = AccountAmtPair.create(accountAmtPair);
 
@@ -513,7 +513,7 @@ module.exports = async (peers, clients) => {
       AccountAmtPair.create(accountAmtPair1)
     ];
   }
-  
+
   // get proto of token distribution
   const getTokenDistributionProto = ({
     accounts,
@@ -536,7 +536,7 @@ module.exports = async (peers, clients) => {
         distribution: accountAmtPairProtos
       }
     }
-    
+
     return TokenDistribution.create(initDistribution);
   }
 
@@ -566,7 +566,7 @@ module.exports = async (peers, clients) => {
       .finish()
       .toJSON().data;
 
-    const sigs = await getAllSignatures({messageBytes: simplexPaymentChannelBytes});
+    const sigs = await getAllSignatures({ messageBytes: simplexPaymentChannelBytes });
 
     const signedSimplexState = {
       simplexState: simplexPaymentChannelBytes,

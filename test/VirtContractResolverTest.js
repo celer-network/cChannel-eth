@@ -46,7 +46,7 @@ contract('VirtContractResolver', async accounts => {
       1024
     );
     fs.appendFileSync(GAS_USED_LOG, 'deploy(): ' + getCallGasUsed(tx) + '\n');
-    
+
     const { event, args } = tx.logs[0];
     let virtAddr = web3.utils.soliditySha3(
       web3.utils.toHex(
@@ -55,7 +55,7 @@ contract('VirtContractResolver', async accounts => {
       1024
     );
     const r = await instance.resolve.call(padLeft(web3.utils.toHex(virtAddr)));
-    
+
     assert.notEqual(r, padLeft(web3.utils.toHex('0x0')));
     assert.equal(event, 'Deploy');
     assert.equal(args.virtAddr, virtAddr);
@@ -66,7 +66,7 @@ function padLeft(data) {
   let pad = (32 - (data.length - 2) % 32) % 32;
   let x = data.substr(2, data.length);
 
-  for (var i = 0; i < pad; i++) {
+  for (let i = 0; i < pad; i++) {
     x = 0 + x;
   }
   return '0x' + x;

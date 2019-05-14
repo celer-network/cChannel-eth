@@ -9,47 +9,45 @@ function getCallGasUsed(tx) {
 
 async function mineBlockUntil(deadline, sendAccount) {
   let block = await web3.eth.getBlock('latest');
-  while(block.number <= deadline) {
-    await web3.eth.sendTransaction({from: sendAccount});  // dummy block consumer
+  while (block.number <= deadline) {
+    await web3.eth.sendTransaction({ from: sendAccount });  // dummy block consumer
     block = await web3.eth.getBlock('latest');
   }
 }
 
-async function prepareCoSignedIntendSettle(
+// get one or two co-signed states for intendSettle()
+async function getCoSignedIntendSettle(
   getPayHashListInfo,
   getSignedSimplexStateArrayBytes,
   channelIds,
-  seqNums = [1, 1],
-  lastPayResolveDeadlines = [999999999, 9999999999],
-  transferAmounts = [10, 20]
+  payAmountsArray,
+  seqNums,
+  lastPayResolveDeadlines,
+  transferAmounts
 ) {
-  const payHashListInfos = [
-    getPayHashListInfo({payAmounts: [[1, 2], [3, 4]]}),
-    getPayHashListInfo({payAmounts: [[5, 6], [7, 8]]})
-  ];
+  let headPayHashLists = [];
+  let condPays = [];
+  let payHashListBytesArrays = [];
+  for (i = 0; i < channelIds.length; i++) {
+    const payHashListInfo = getPayHashListInfo({ payAmounts: payAmountsArray[i] });
+    headPayHashLists[i] = payHashListInfo.payHashListProtos[0];
+    condPays[i] = payHashListInfo.payBytesArray;
+    payHashListBytesArrays[i] = payHashListInfo.payHashListBytesArray;
+  }
 
   const signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
     channelIds: channelIds,
     seqNums: seqNums,
     lastPayResolveDeadlines: lastPayResolveDeadlines,
-    payHashLists: [
-      payHashListInfos[0].payHashListProtos[0],
-      payHashListInfos[1].payHashListProtos[0]
-    ],
+    payHashLists: headPayHashLists,
     transferAmounts: transferAmounts
   });
 
   return {
     signedSimplexStateArrayBytes: signedSimplexStateArrayBytes,
     lastPayResolveDeadlines: lastPayResolveDeadlines,
-    condPays: [
-      payHashListInfos[0].payBytesArray,
-      payHashListInfos[1].payBytesArray
-    ],
-    payHashListBytesArrays: [
-      payHashListInfos[0].payHashListBytesArray,
-      payHashListInfos[1].payHashListBytesArray
-    ]
+    condPays: condPays,
+    payHashListBytesArrays: payHashListBytesArrays
   };
 }
 
@@ -65,6 +63,6 @@ module.exports = {
   getDeployGasUsed: getDeployGasUsed,
   getCallGasUsed: getCallGasUsed,
   mineBlockUntil: mineBlockUntil,
-  prepareCoSignedIntendSettle: prepareCoSignedIntendSettle,
-  getSortedArray: getSortedArray
+  getSortedArray: getSortedArray,
+  getCoSignedIntendSettle: getCoSignedIntendSettle
 }

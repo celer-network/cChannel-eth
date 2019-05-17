@@ -79,6 +79,7 @@ Two proto3 files are used in cChannel-eth, `chain.proto` and `entity.proto`, whi
 
 ### Alpha Mainnet
 **ATTENTION**: this deployment is only for Alpha release testing. Please do not deposit any real ETH, valuable tokens or funds into this version. Celer is not responsible for any loss.
+#### Celer Channel
 * Contract address: [0xa021fc97622f4259745c8604fb7f6e007a78d4f4](https://etherscan.io/address/0xa021fc97622f4259745c8604fb7f6e007a78d4f4)
 * Deployed code: [CelerChannel.sol](https://github.com/celer-network/cChannel-eth/blob/v0.11.0/contracts/CelerChannel.sol)
 

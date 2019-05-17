@@ -71,7 +71,7 @@ We also developed and open sourced a library generator of Solidity for decoding 
 
 Two proto3 files are used in cChannel-eth, `chain.proto` and `entity.proto`, which are stored in `lib/data/proto/`. `chain.proto` defines data structures only used in on-chain contracts ("2" means version 2) while `entity.proto` defines data structures used both in on-chain contracts and off-chain communication protocols.
 
-## Deployments
+## Latest Deployments
 ### Ropsten
 #### Celer Channel
 * Contract address: [0x66804e13b02d2d2d4174ae3b538bf968411bb6c1](https://ropsten.etherscan.io/address/0x66804e13b02d2d2d4174ae3b538bf968411bb6c1)

@@ -71,8 +71,17 @@ We also developed and open sourced a library generator of Solidity for decoding 
 
 Two proto3 files are used in cChannel-eth, `chain.proto` and `entity.proto`, which are stored in `lib/data/proto/`. `chain.proto` defines data structures only used in on-chain contracts ("2" means version 2) while `entity.proto` defines data structures used both in on-chain contracts and off-chain communication protocols.
 
-## Testnet
-This version is waiting for deployment.
+## Latest Deployments
+### Ropsten
+#### Celer Channel
+* Contract address: [0x66804e13b02d2d2d4174ae3b538bf968411bb6c1](https://ropsten.etherscan.io/address/0x66804e13b02d2d2d4174ae3b538bf968411bb6c1)
+* Deployed code: [CelerChannel.sol](https://github.com/celer-network/cChannel-eth/blob/v0.11.0/contracts/CelerChannel.sol)
+
+### Alpha Mainnet
+**ATTENTION**: this deployment is only for Alpha release testing. Please DO NOT deposit any real ETH, valuable tokens or funds into this version. Celer is not responsible for any loss.
+#### Celer Channel
+* Contract address: [0xa021fc97622f4259745c8604fb7f6e007a78d4f4](https://etherscan.io/address/0xa021fc97622f4259745c8604fb7f6e007a78d4f4)
+* Deployed code: [CelerChannel.sol](https://github.com/celer-network/cChannel-eth/blob/v0.11.0/contracts/CelerChannel.sol)
 
 ## Solidity Version
 Solidity `^0.5.0` or above is required to run cChannel-eth contracts.

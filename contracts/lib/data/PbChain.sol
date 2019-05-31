@@ -2,7 +2,6 @@
 // source: chain.proto
 pragma solidity ^0.5.0;
 import "./Pb.sol";
-import "./PbEntity.sol";
 
 library PbChain {
     using Pb for Pb.Buffer;  // so we can call Pb funcs on Buffer obj

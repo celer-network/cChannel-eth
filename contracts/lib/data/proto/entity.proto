@@ -39,7 +39,7 @@ message TokenTransfer {
   AccountAmtPair receiver = 2;
 }
 
-// Next Tag: 7
+// Next Tag: 8
 message SimplexPaymentChannel {
   uint64 channel_id = 1;
   // aka simplex channel owner.
@@ -50,10 +50,12 @@ message SimplexPaymentChannel {
   // head of the hashlist chain of all pending conditional pays.
   PayHashList pending_pay_hashes = 5;
   // The last resolve deadline of all pending conditonal pays.
-  // confirmSettle must be called after all pending pays have been finalized, 
-  // namely all pending pays have been resolved in the pay registry, 
+  // confirmSettle must be called after all pending pays have been finalized,
+  // namely all pending pays have been resolved in the pay registry,
   // or after the last_pay_resolve_deadline.
   uint64 last_pay_resolve_deadline = 6 [(soltype) = "uint"];
+  // total amount of all pending pays.
+  bytes total_pending_amount = 7 [(soltype) = "uint256"];
 }
 
 // Next Tag: 3
@@ -75,7 +77,7 @@ enum TransferFunctionType {
 
 // Next Tag: 3
 message TransferFunction {
-  // Return transfer amount based on codition results.
+  // Return transfer amount based on condition results.
   // TransferFunctionType is sufficient for simple functions such as
   // BOOLEAN_AND, BOOLEAN_OR, NUMERIC_ADD, NUMERIC_MAX, and NUMERIC_MIN.
   // When logic_type is NUMERIC_*, hashlock condition is always treated as BOOLEAN_AND

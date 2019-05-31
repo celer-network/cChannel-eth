@@ -1,14 +1,7 @@
 syntax = "proto3";
 option go_package = "github.com/celer-network/goCeler/chain";
 
-import "google/protobuf/descriptor.proto";
-import "entity.proto";
-
 package chain;
-
-extend google.protobuf.FieldOptions {
-  string soltype = 1002;
-}
 
 // Next Tag: 3
 message OpenChannelRequest {

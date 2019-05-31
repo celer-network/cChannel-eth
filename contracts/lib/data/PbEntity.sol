@@ -134,6 +134,7 @@ library PbEntity {
         TokenTransfer transferToPeer;   // tag: 4
         PayHashList pendingPayHashes;   // tag: 5
         uint lastPayResolveDeadline;   // tag: 6
+        uint256 totalPendingAmount;   // tag: 7
     } // end struct SimplexPaymentChannel
 
     function decSimplexPaymentChannel(bytes memory raw) internal pure returns (SimplexPaymentChannel memory m) {
@@ -161,6 +162,9 @@ library PbEntity {
             }
             else if (tag == 6) {
                 m.lastPayResolveDeadline = uint(buf.decVarint());
+            }
+            else if (tag == 7) {
+                m.totalPendingAmount = Pb._uint256(buf.decBytes());
             }
             else { buf.skipValue(wire); } // skip value of unknown tag
         }

@@ -65,11 +65,11 @@ cChannel-eth is currently under active developments in our private repo. This pu
 
 ## Protocol Buffers Usage
 [Protocol Buffers (protobuf)](https://developers.google.com/protocol-buffers/) are "a language-neutral, platform-neutral extensible mechanism for serializing structured data" developed by Google.
-We leverage Protocol Buffers to define a series of blockchain-neutral generalized data structures, which can be seamlessly used in off-chain communication protocols and instantly extended to other blockchains that we plan to support.
+We leverage Protocol Buffers to define a series of blockchain-neutral generalized data structures, which can be seamlessly used in off-chain communication protocols and instantly extended to other blockchains that we will support.
 
-We also developed and open sourced a library generator of Solidity for decoding proto3 called [pb3-gen-sol](https://github.com/celer-network/pb3-gen-sol), which is listed in the official [Third-Party Add-ons for Protocol Buffers](https://github.com/protocolbuffers/protobuf/blob/master/docs/third_party.md).
+We have also developed and open sourced a Solidity library generator of proto3 decoders called [pb3-gen-sol](https://github.com/celer-network/pb3-gen-sol), which is listed in protobuf's official [Third-Party Add-ons for Protocol Buffers](https://github.com/protocolbuffers/protobuf/blob/master/docs/third_party.md).
 
-Two proto3 files are used in cChannel-eth, `chain.proto` and `entity.proto`, which are stored in `lib/data/proto/`. `chain.proto` defines data structures only used in on-chain contracts ("2" means version 2) while `entity.proto` defines data structures used both in on-chain contracts and off-chain communication protocols.
+Two proto3 files are used in cChannel-eth, `chain.proto` and `entity.proto`, which are stored in `lib/data/proto/`. `chain.proto` defines data structures only used in on-chain contracts, while `entity.proto` defines data structures used both in on-chain contracts and off-chain communication protocols.
 
 ## Latest Deployments
 ### Ropsten
@@ -101,7 +101,9 @@ The following is the main code structure of cChannel-eth:
 
 ### test folder
 * **channel**: unit test files for cChannel.
+* **gas_measurement**: fine-granularity gas measurements for contract deployments and function calls.
 * **helper**: assistant modules in unit tests including some modules for generating protobuf objects used in test cases.
+* **EthPoolTest.js**: unit tests for EthPool.
 * **PayRegistryTest.js**: unit tests for PayRegistry.
 * **VirtContractResolverTest.js**: unit tests for Virtual Contract Resolver.
 

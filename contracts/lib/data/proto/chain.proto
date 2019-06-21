@@ -5,7 +5,7 @@ package chain;
 
 // Next Tag: 3
 message OpenChannelRequest {
-  // channel_initializer is serialized entity.PaymentChannelInitializer
+  // serialized entity.PaymentChannelInitializer message
   bytes channel_initializer = 1;
   // require an ascending order based on addresses associated with these sigs
   repeated bytes sigs = 2;
@@ -13,7 +13,7 @@ message OpenChannelRequest {
 
 // Next Tag: 3
 message CooperativeWithdrawRequest {
-  // withdraw_info is serialized entity.CooperativeWithdrawInfo
+  // serialized entity.CooperativeWithdrawInfo message
   bytes withdraw_info = 1;
   // require an ascending order based on addresses associated with these sigs
   repeated bytes sigs = 2;
@@ -21,7 +21,7 @@ message CooperativeWithdrawRequest {
 
 // Next Tag: 3
 message CooperativeSettleRequest {
-  // settle_info is serialized entity.CooperativeSettleInfo
+  // serialized entity.CooperativeSettleInfo message
   bytes settle_info = 1;
   // require an ascending order based on addresses associated with these sigs
   repeated bytes sigs = 2;
@@ -29,7 +29,7 @@ message CooperativeSettleRequest {
 
 // Next Tag: 3
 message ResolvePayByConditionsRequest {
-  // serialized entity.ConditionalPay
+  // serialized entity.ConditionalPay message
   bytes cond_pay = 1;
   // preimages of the cond_pay hash locks in the same order
   repeated bytes hash_preimages = 2;
@@ -37,7 +37,7 @@ message ResolvePayByConditionsRequest {
 
 // Next Tag: 3
 message SignedSimplexState {
-  // serialized SimplexPaymentChannel message
+  // serialized entity.SimplexPaymentChannel message
   bytes simplex_state = 1;
   // require an ascending order based on addresses associated with these sigs
   repeated bytes sigs = 2;
@@ -57,4 +57,12 @@ message SignedSimplexState {
 //   you are intending to settle the whole duplex channel.
 message SignedSimplexStateArray {
   repeated SignedSimplexState signed_simplex_states = 1;
+}
+
+// Next Tag: 3
+message ChannelMigrationRequest {
+  // serialized entity.ChannelMigrationInfo message
+  bytes channel_migration_info = 1;
+  // require an ascending order based on addresses associated with these sigs
+  repeated bytes sigs = 2;
 }

@@ -1,6 +1,6 @@
 pragma solidity ^0.5.0;
 
-import "./lib/IVirtContractResolver.sol";
+import "./lib/interface/IVirtContractResolver.sol";
 
 /**
  * @title Virtual Contract Resolver contract

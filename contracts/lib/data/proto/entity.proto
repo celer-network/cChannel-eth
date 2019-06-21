@@ -11,7 +11,7 @@ extend google.protobuf.FieldOptions {
 
 // Next Tag: 3
 message AccountAmtPair {
-  bytes account = 1 [(soltype) = "address payable"];
+  bytes account = 1 [(soltype) = "address"];
   bytes amt = 2 [(soltype) = "uint256"];
 }
 
@@ -41,14 +41,14 @@ message TokenTransfer {
 
 // Next Tag: 8
 message SimplexPaymentChannel {
-  uint64 channel_id = 1;
+  bytes channel_id = 1 [(soltype) = "bytes32"];
   // aka simplex channel owner.
   bytes peer_from = 2 [(soltype) = "address"];
   uint64 seq_num = 3 [(soltype) = "uint"];
   // Unconditional token transfer to simplex channel peer, amount increases monotonically.
   TokenTransfer transfer_to_peer = 4;
-  // head of the hashlist chain of all pending conditional pays.
-  PayHashList pending_pay_hashes = 5;
+  // head of the idlist chain of all pending conditional pays.
+  PayIdList pending_pay_ids = 5;
   // The last resolve deadline of all pending conditonal pays.
   // confirmSettle must be called after all pending pays have been finalized,
   // namely all pending pays have been resolved in the pay registry,
@@ -59,10 +59,11 @@ message SimplexPaymentChannel {
 }
 
 // Next Tag: 3
-message PayHashList {
-    // array of hashes of serialized ConditionalPay
-    repeated bytes pay_hashes = 1 [(soltype) = "bytes32"];
-    // hash of serialized next PayHashList
+message PayIdList {
+    // array of ids of serialized ConditionalPay
+    // pay_id is computed as hash(hash(cond_pay), pay_resolver_address)
+    repeated bytes pay_ids = 1 [(soltype) = "bytes32"];
+    // hash of serialized next PayIdList
     bytes next_list_hash = 2 [(soltype) = "bytes32"];
 }
 
@@ -88,10 +89,10 @@ message TransferFunction {
   // TODO: add message type for generic transfer logic
 }
 
-// Next Tag: 8
+// Next Tag: 9
 message ConditionalPay {
   // pay_timestamp is set by payment source, to ensure no same condpay between src-dst
-  // global unique cond_pay hash used on-chain is computed as hash(serialized(cond_pay))
+  // global unique pay id used on-chain is computed as hash(hash(cond_pay), pay_resolver_address)
   uint64 pay_timestamp = 1 [(soltype) = "uint"];
   // src and dest are public keys of payment sender and receiver used to vouch the payment result.
   // For simplicity, current off-chain backend implementation requires these two fields to be the
@@ -113,6 +114,7 @@ message ConditionalPay {
   uint64 resolve_deadline = 6 [(soltype) = "uint"];
   // resolve_timeout is the dispute window after a resolve payment request is submitted
   uint64 resolve_timeout = 7 [(soltype) = "uint"];
+  bytes pay_resolver = 8 [(soltype) = "address"];
 }
 
 // Next Tag: 3
@@ -136,30 +138,29 @@ enum ConditionType {
   VIRTUAL_CONTRACT = 2;
 }
 
-// Next Tag: 8
+// Next Tag: 7
 message Condition {
-  uint64 cond_id = 1 [(soltype) = "uint"];
-  ConditionType condition_type = 2;
+  ConditionType condition_type = 1;
   // one of the following:
   // 1. hash of the secret preimage
-  bytes hash_lock = 3 [(soltype) = "bytes32"];
+  bytes hash_lock = 2 [(soltype) = "bytes32"];
   // 2. onchain deployed contract
-  bytes deployed_contract_address = 4 [(soltype) = "address"];
+  bytes deployed_contract_address = 3 [(soltype) = "address"];
   // 3. offchain virtual contract
-  bytes virtual_contract_address = 5 [(soltype) = "bytes32"];
-  bytes args_query_finalization = 6;
-  bytes args_query_result = 7;
+  bytes virtual_contract_address = 4 [(soltype) = "bytes32"];
+  bytes args_query_finalization = 5;
+  bytes args_query_outcome = 6;
 }
 
 // Next Tag: 6
 message CooperativeWithdrawInfo {
-  uint64 channel_id = 1;
+  bytes channel_id = 1 [(soltype) = "bytes32"];
   uint64 seq_num = 2 [(soltype) = "uint"];
   AccountAmtPair withdraw = 3;
   uint64 withdraw_deadline = 4 [(soltype) = "uint"];
-  // if non-zero, do balance transfer to the receipient channel
+  // if non-zero, do balance transfer to the recipient channel
   // instead of withdraw to the account
-  uint64 recipient_channel_id = 5;
+  bytes recipient_channel_id = 5 [(soltype) = "bytes32"];
 }
 
 // Next Tag: 5
@@ -170,15 +171,23 @@ message PaymentChannelInitializer {
   uint64 dispute_timeout = 3 [(soltype) = "uint"];
   // index of channel peer who receives the blockchain native token
   // associated with the transaction (msg.value in case of ETH)
-  uint64 msg_value_recipient = 4 [(soltype) = "uint"];
+  uint64 msg_value_receiver = 4 [(soltype) = "uint"];
 }
 
 // Next Tag: 5
 message CooperativeSettleInfo {
-  uint64 channel_id = 1;
+  bytes channel_id = 1 [(soltype) = "bytes32"];
   // contracts should require seq_num > both seq_nums of two SimplexPaymentChannel
   uint64 seq_num = 2 [(soltype) = "uint"];
   // final balance distribution without any conditional payments
   repeated AccountAmtPair settle_balance = 3;
   uint64 settle_deadline = 4 [(soltype) = "uint"];
+}
+
+// Next Tag: 5
+message ChannelMigrationInfo {
+  bytes channel_id = 1 [(soltype) = "bytes32"];
+  bytes from_ledger_address = 2 [(soltype) = "address"];
+  bytes to_ledger_address = 3 [(soltype) = "address"];
+  uint64 migration_deadline = 4 [(soltype) = "uint"];
 }

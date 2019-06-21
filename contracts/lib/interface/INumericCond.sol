@@ -6,5 +6,5 @@ pragma solidity ^0.5.0;
 interface INumericCond {
     function isFinalized(bytes calldata _query) external view returns (bool);
     
-    function getResult(bytes calldata _query) external view returns (uint);
+    function getOutcome(bytes calldata _query) external view returns (uint);
 }

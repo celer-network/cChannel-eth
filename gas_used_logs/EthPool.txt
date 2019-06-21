@@ -1,11 +1,11 @@
 ********** Gas Used in EthPool Tests **********
 
 ***** Deploy Gas Used *****
-EthPool Deploy Gas: 701516
+EthPool Deploy Gas: 791218
 ***** Function Calls Gas Used *****
-deposit(): 45071
+deposit(): 45163
 withdraw(): 21845
-approve(): 45389
-transferFrom(): 71752
-increaseAllowance(): 30864
-decreaseAllowance(): 30920
+approve(): 45422
+transferFrom(): 71849
+increaseAllowance(): 31008
+decreaseAllowance(): 30953

@@ -8,5 +8,5 @@ interface IVirtContractResolver {
     
     function resolve(bytes32 _virtAddr) external view returns (address);
 
-    event Deploy(bytes32 virtAddr);
+    event Deploy(bytes32 indexed virtAddr);
 }

@@ -1,13 +1,13 @@
 pragma solidity ^0.5.0;
 
-import "../lib/INumericCond.sol";
+import "../lib/interface/INumericCond.sol";
 
 contract NumericCondMock is INumericCond {
     function isFinalized(bytes calldata _query) view external returns (bool) {
         return true;
     }
 
-    function getResult(bytes calldata _query) view external returns (uint) {
+    function getOutcome(bytes calldata _query) view external returns (uint) {
         return _bytesToUint(_query);
     }
 

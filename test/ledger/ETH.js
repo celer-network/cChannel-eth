@@ -12,34 +12,48 @@ const {
   getSortedArray,
   getCoSignedIntendSettle,
   getDeployGasUsed,
-  getCallGasUsed
+  getCallGasUsed,
+  calculatePayId
 } = utilities;
 
-const CelerChannel = artifacts.require('CelerChannel');
-const Resolver = artifacts.require('VirtContractResolver');
+const LedgerStruct = artifacts.require('LedgerStruct');
+const LedgerOperation = artifacts.require('LedgerOperation');
+const LedgerBalanceLimit = artifacts.require('LedgerBalanceLimit');
+const LedgerMigrate = artifacts.require('LedgerMigrate');
+const LedgerChannel = artifacts.require('LedgerChannel');
+
+const CelerWallet = artifacts.require('CelerWallet');
+const CelerLedger = artifacts.require('CelerLedger');
+const VirtResolver = artifacts.require('VirtContractResolver');
 const EthPool = artifacts.require('EthPool');
 const ERC20ExampleToken = artifacts.require('ERC20ExampleToken');
 const PayRegistry = artifacts.require('PayRegistry');
+const PayResolver = artifacts.require('PayResolver');
 
-contract('CelerChannel using ETH', async accounts => {
-  const peers = getSortedArray([accounts[0], accounts[1]]);
-  const overlappedPeers = getSortedArray([peers[0], accounts[2]]);
-  const differentPeers = getSortedArray([accounts[2], accounts[3]]);
-  const clients = [accounts[8], accounts[9]];  // namely [src, dest]
+contract('CelerLedger using ETH', async accounts => {
+  const ZERO_CHANNELID = "0x0000000000000000000000000000000000000000000000000000000000000000";
   const ETH_ADDR = '0x0000000000000000000000000000000000000000';
   const DISPUTE_TIMEOUT = 20;
   const GAS_USED_LOG = 'gas_used_logs/CelerChannel-ETH.txt';
   // the meaning of the index: [peer index][pay hash list index][pay index]
   const PEERS_PAY_HASH_LISTS_AMTS = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
 
+  const peers = getSortedArray([accounts[0], accounts[1]]);
+  const overlappedPeers = getSortedArray([peers[0], accounts[2]]);
+  const differentPeers = getSortedArray([accounts[2], accounts[3]]);
+  const clients = [accounts[8], accounts[9]];  // namely [src, dest]
+
   // contract enforce ascending order of addresses
   let instance;
+  let celerWallet;
   let ethPool;
   let channelId;
   let payRegistry;
+  let payResolver;
   let globalResult;
   let uniqueChannelIds = [];
   let coWithdrawSeqNum = 1;
+  let uniqueOpenDeadline = 5000000;  // make hash of each channelInitializer unique
 
   let protoChainInstance;
   let getOpenChannelRequest;
@@ -47,25 +61,59 @@ contract('CelerChannel using ETH', async accounts => {
   let getSignedSimplexStateArrayBytes;
   let getCooperativeSettleRequestBytes;
   let getResolvePayByConditionsRequestBytes;
-  let getPayHashListInfo;
+  let getPayIdListInfo;
 
   before(async () => {
-    fs.writeFileSync(GAS_USED_LOG, '********** Gas Used in CelerChannel-ETH Tests **********\n\n');
+    fs.writeFileSync(GAS_USED_LOG, '********** Gas Used in CelerLedger-ETH Tests **********\n\n');
 
-    const resolver = await Resolver.new();
+    const virtResolver = await VirtResolver.new();
     ethPool = await EthPool.new();
-    payRegistry = await PayRegistry.new(resolver.address)
-    instance = await CelerChannel.new(ethPool.address, payRegistry.address);
+    payRegistry = await PayRegistry.new()
+    payResolver = await PayResolver.new(payRegistry.address, virtResolver.address)
+    celerWallet = await CelerWallet.new();
+
+    // deploy and link libraries
+    const ledgerStuctLib = await LedgerStruct.new();
+
+    await LedgerChannel.link("LedgerStruct", ledgerStuctLib.address);
+    const ledgerChannel = await LedgerChannel.new();
+
+    await LedgerBalanceLimit.link("LedgerStruct", ledgerStuctLib.address);
+    const ledgerBalanceLimit = await LedgerBalanceLimit.new();
+
+    await LedgerOperation.link("LedgerStruct", ledgerStuctLib.address);
+    await LedgerOperation.link("LedgerChannel", ledgerChannel.address);
+    const ledgerOperation = await LedgerOperation.new();
+
+    await LedgerMigrate.link("LedgerStruct", ledgerStuctLib.address);
+    await LedgerMigrate.link("LedgerOperation", ledgerOperation.address);
+    await LedgerMigrate.link("LedgerChannel", ledgerChannel.address);
+    const ledgerMigrate = await LedgerMigrate.new();
+
+    await CelerLedger.link("LedgerStruct", ledgerStuctLib.address);
+    await CelerLedger.link("LedgerOperation", ledgerOperation.address);
+    await CelerLedger.link("LedgerBalanceLimit", ledgerBalanceLimit.address);
+    await CelerLedger.link("LedgerMigrate", ledgerMigrate.address);
+    await CelerLedger.link("LedgerChannel", ledgerChannel.address);
+    instance = await CelerLedger.new(
+      ethPool.address,
+      payRegistry.address,
+      celerWallet.address
+    );
 
     fs.appendFileSync(GAS_USED_LOG, '***** Deploy Gas Used *****\n');
-    let gasUsed = await getDeployGasUsed(resolver);
+    let gasUsed = await getDeployGasUsed(virtResolver);
     fs.appendFileSync(GAS_USED_LOG, 'VirtContractResolver Deploy Gas: ' + gasUsed + '\n');
     gasUsed = await getDeployGasUsed(ethPool);
     fs.appendFileSync(GAS_USED_LOG, 'EthPool Deploy Gas: ' + gasUsed + '\n');
     gasUsed = await getDeployGasUsed(payRegistry);
     fs.appendFileSync(GAS_USED_LOG, 'PayRegistry Deploy Gas: ' + gasUsed + '\n');
+    gasUsed = await getDeployGasUsed(payResolver);
+    fs.appendFileSync(GAS_USED_LOG, 'PayResolver Deploy Gas: ' + gasUsed + '\n');
+    gasUsed = await getDeployGasUsed(celerWallet);
+    fs.appendFileSync(GAS_USED_LOG, 'CelerWallet Deploy Gas: ' + gasUsed + '\n');
     gasUsed = await getDeployGasUsed(instance);
-    fs.appendFileSync(GAS_USED_LOG, 'CelerChannel Deploy Gas: ' + gasUsed + '\n\n');
+    fs.appendFileSync(GAS_USED_LOG, 'CelerLedger Deploy Gas: ' + gasUsed + '\n\n');
     fs.appendFileSync(GAS_USED_LOG, '***** Function Calls Gas Used *****\n');
 
     protoChainInstance = await protoChainFactory(peers, clients);
@@ -74,51 +122,23 @@ contract('CelerChannel using ETH', async accounts => {
     getSignedSimplexStateArrayBytes = protoChainInstance.getSignedSimplexStateArrayBytes;
     getCooperativeSettleRequestBytes = protoChainInstance.getCooperativeSettleRequestBytes;
     getResolvePayByConditionsRequestBytes = protoChainInstance.getResolvePayByConditionsRequestBytes;
-    getPayHashListInfo = protoChainInstance.getPayHashListInfo;
+    getPayIdListInfo = protoChainInstance.getPayIdListInfo;
 
     // make sure peers deposit enough ETH in ETH pool
     await ethPool.deposit(peers[0], { value: 1000000000 });
     await ethPool.deposit(peers[1], { value: 1000000000 });
   });
 
-  it('should fail to transfer ETH to CelerChannel from a non-EthPool address', async () => {
-    try {
-      await instance.sendTransaction({ value: 100, from: accounts[0] });
-    } catch (error) {
-      assert.isAbove(
-        error.message.search('Sender is not EthPool'),
-        -1
-      );
-      return;
-    }
-
-    assert.fail('should have thrown before');
-  });
-
-  it('should transfer ETH to CelerChannel correctly from EthPool address', async () => {
-    instanceTmp = await CelerChannel.new(
-      accounts[0],  // eth pool address
-      accounts[1]
-    );
-
-    let balance;
-    balance = await web3.eth.getBalance(instanceTmp.address);
-    assert.equal(balance, 0);
-
-    await instanceTmp.sendTransaction({ value: 100, from: accounts[0] });
-    balance = await web3.eth.getBalance(instanceTmp.address);
-    assert.equal(balance, 100);
-  });
-
   it('should return Uninitialized status for an inexistent channel', async () => {
-    const status = await instance.getChannelStatus(1);
+    const status = await instance.getChannelStatus(
+      "0x0000000000000000000000000000000000000000000000000000000000000123"  // a random channelId
+    );
 
     assert.equal(status, 0);
   });
 
   it('should fail to open a channel after openDeadline', async () => {
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true,
       openDeadline: 0
@@ -142,7 +162,7 @@ contract('CelerChannel using ETH', async accounts => {
     await ethPool.approve(instance.address, 200, { from: peers[1] });
 
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
@@ -151,7 +171,7 @@ contract('CelerChannel using ETH', async accounts => {
       await instance.openChannel(openChannelRequest);
     } catch (error) {
       assert.isAbove(
-        error.message.search('Deposits exceed limit'),
+        error.message.search('Balance exceeds limit'),
         -1
       );
       return;
@@ -162,7 +182,7 @@ contract('CelerChannel using ETH', async accounts => {
 
   it('should open a channel correctly when total deposit is zero', async () => {
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true
     });
@@ -176,19 +196,18 @@ contract('CelerChannel using ETH', async accounts => {
     const status = await instance.getChannelStatus(channelId);
 
     assert.equal(event, 'OpenChannel');
-    assert.equal(channelId, request.channelId);
+    // TODO: calculate the channelId (by wallet info) and test again
+    // assert.equal(channelId, request.channelId);
     assert.equal(args.tokenType, 1); //  1 for ETH
     assert.equal(args.tokenAddress, ETH_ADDR);
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [0, 0]);
+    assert.equal(args.initialDeposits.toString(), [0, 0]);
     assert.equal(status, 1);
-
-    // balances = [0, 0]
   });
 
-  it('should fail to open a channel with an occupied channel ID (by used channel initializer)', async () => {
+  it('should fail to open a channel again with the same channel id', async () => {
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline - 1,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true
     });
@@ -198,7 +217,7 @@ contract('CelerChannel using ETH', async accounts => {
       await instance.openChannel(openChannelRequest);
     } catch (error) {
       assert.isAbove(
-        error.message.search('Occupied channelId'),
+        error.message.search('Occupied wallet id'),
         -1
       );
       return;
@@ -235,7 +254,7 @@ contract('CelerChannel using ETH', async accounts => {
   it('should open another channel correctly', async () => {
     // Open another channel and try to deposit to channel that is not created the last.
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true,
       channelPeers: differentPeers
@@ -249,11 +268,11 @@ contract('CelerChannel using ETH', async accounts => {
     const status = await instance.getChannelStatus(differentPeersChannelId);
 
     assert.equal(event, 'OpenChannel');
-    assert.equal(differentPeersChannelId, request.channelId);
+    // assert.equal(differentPeersChannelId, request.channelId);
     assert.equal(args.tokenType, 1); //  1 for ETH
     assert.equal(args.tokenAddress, ETH_ADDR);
     assert.deepEqual(args.peerAddrs, differentPeers);
-    assert.equal(args.balances.toString(), [0, 0]);
+    assert.equal(args.initialDeposits.toString(), [0, 0]);
     assert.equal(status, 1);
   });
 
@@ -270,7 +289,7 @@ contract('CelerChannel using ETH', async accounts => {
       );
     } catch (error) {
       assert.isAbove(
-        error.message.search('Deposits exceed limit'),
+        error.message.search('Balance exceeds limit'),
         -1
       );
       return;
@@ -281,7 +300,7 @@ contract('CelerChannel using ETH', async accounts => {
 
   it('should fail to set deposit limits if not owner', async () => {
     try {
-      await instance.setDepositLimits([ETH_ADDR], [1000000], { from: accounts[1] });
+      await instance.setBalanceLimits([ETH_ADDR], [1000000], { from: accounts[1] });
     } catch (error) {
       return;
     }
@@ -291,20 +310,19 @@ contract('CelerChannel using ETH', async accounts => {
 
   it('should set deposit limits correctly', async () => {
     const limit = 1000000;
-    const tx = await instance.setDepositLimits([ETH_ADDR], [limit], { from: accounts[0] });
-    fs.appendFileSync(GAS_USED_LOG, 'setDepositLimits(): ' + getCallGasUsed(tx) + '\n');
+    const tx = await instance.setBalanceLimits([ETH_ADDR], [limit], { from: accounts[0] });
+    fs.appendFileSync(GAS_USED_LOG, 'setBalanceLimits(): ' + getCallGasUsed(tx) + '\n');
 
-    const depositLimit = await instance.depositLimits.call(ETH_ADDR);
-    assert.equal(limit.toString(), depositLimit.toString());
+    const balanceLimit = await instance.getBalanceLimit.call(ETH_ADDR);
+    assert.equal(limit.toString(), balanceLimit.toString());
   });
 
   it('should open a channel with funds correctly after setting deposit limit', async () => {
     await ethPool.approve(instance.address, 200, { from: peers[1] });
 
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
-      disputeTimeout: DISPUTE_TIMEOUT,
-      openDeadline: 1234567890  // for a unique channel ID
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
 
@@ -312,12 +330,12 @@ contract('CelerChannel using ETH', async accounts => {
     const { event, args } = tx.logs[0];
     channelIdTmp = args.channelId.toString();
 
-    assert.equal(channelIdTmp, request.channelId);
+    // assert.equal(channelIdTmp, request.channelId);
     assert.equal(event, 'OpenChannel');
     assert.equal(args.tokenType, 1); //  '1' for ETH
     assert.equal(args.tokenAddress, ETH_ADDR);
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [100, 200]);
+    assert.equal(args.initialDeposits.toString(), [100, 200]);
   });
 
   it('should deposit via msg.value correctly', async () => {
@@ -333,23 +351,24 @@ contract('CelerChannel using ETH', async accounts => {
     fs.appendFileSync(GAS_USED_LOG, 'deposit() via msg.value: ' + getCallGasUsed(tx) + '\n');
 
     const { event, args } = tx.logs[0];
-    const amount = await instance.getDepositAmount(channelId, peers[0]);
-    const depositMap = await instance.getDepositMap(channelId);
-    const channelPeers = depositMap[0];
-    const channelBalances = depositMap[1];
+    const balanceAmt = await instance.getTotalBalance(channelId);
+    const balanceMap = await instance.getBalanceMap(channelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
 
     assert.equal(event, 'Deposit');
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [50, 0]);
-    assert.equal(amount, 50);
+    assert.equal(args.deposits.toString(), [50, 0]);
+    assert.equal(args.withdrawals.toString(), [0, 0]);
+    assert.equal(balanceAmt, 50);
     assert.deepEqual(channelPeers, peers);
-    assert.equal(channelBalances.toString(), [50, 0]);
-
-    // balances = [50, 0]
+    assert.equal(deposits.toString(), [50, 0]);
+    assert.equal(withdrawals.toString(), [0, 0]);
   });
 
   it('should fail to deposit when the new deposit sum exceeds the deposit limit', async () => {
-    await instance.setDepositLimits([ETH_ADDR], [60], { from: accounts[0] });
+    await instance.setBalanceLimits([ETH_ADDR], [60], { from: accounts[0] });
 
     let errorCounter = 0;
     try {
@@ -363,7 +382,7 @@ contract('CelerChannel using ETH', async accounts => {
         }
       );
     } catch (error) {
-      if (error.message.search('Deposits exceed limit') > -1) {
+      if (error.message.search('Balance exceeds limit') > -1) {
         errorCounter++;
       }
     }
@@ -379,7 +398,7 @@ contract('CelerChannel using ETH', async accounts => {
         }
       );
     } catch (error) {
-      if (error.message.search('Deposits exceed limit') > -1) {
+      if (error.message.search('Balance exceeds limit') > -1) {
         errorCounter++;
       }
     }
@@ -389,7 +408,7 @@ contract('CelerChannel using ETH', async accounts => {
 
   it('should fail to disable all deposit limits if not owner', async () => {
     try {
-      await instance.disableDepositLimits({ from: accounts[1] });
+      await instance.disableBalanceLimits({ from: accounts[1] });
     } catch (error) {
       return;
     }
@@ -398,11 +417,11 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should disable all deposit limits correctly', async () => {
-    const tx = await instance.disableDepositLimits({ from: accounts[0] });
-    fs.appendFileSync(GAS_USED_LOG, 'disableDepositLimits(): ' + getCallGasUsed(tx) + '\n');
+    const tx = await instance.disableBalanceLimits({ from: accounts[0] });
+    fs.appendFileSync(GAS_USED_LOG, 'disableBalanceLimits(): ' + getCallGasUsed(tx) + '\n');
 
-    const depositLimitsEnabled = await instance.depositLimitsEnabled.call();
-    assert.equal(depositLimitsEnabled, false);
+    const balanceLimitsEnabled = await instance.getBalanceLimitsEnabled.call();
+    assert.equal(balanceLimitsEnabled, false);
   });
 
   it('should deposit correctly after removing deposit limits', async () => {
@@ -417,24 +436,25 @@ contract('CelerChannel using ETH', async accounts => {
     );
 
     const { event, args } = tx.logs[0];
-    const amount = await instance.getDepositAmount(channelId, peers[0]);
-    const depositMap = await instance.getDepositMap(channelId);
-    const channelPeers = depositMap[0];
-    const channelBalances = depositMap[1];
+    const balanceAmt = await instance.getTotalBalance(channelId);
+    const balanceMap = await instance.getBalanceMap(channelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
 
     assert.equal(event, 'Deposit');
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [100, 0]);
-    assert.equal(amount, 100);
+    assert.equal(args.deposits.toString(), [100, 0]);
+    assert.equal(args.withdrawals.toString(), [0, 0]);
+    assert.equal(balanceAmt, 100);
     assert.deepEqual(channelPeers, peers);
-    assert.equal(channelBalances.toString(), [100, 0]);
-
-    // balances = [100, 0]
+    assert.equal(deposits.toString(), [100, 0]);
+    assert.equal(withdrawals.toString(), [0, 0]);
   });
 
   it('should fail to enable all deposit limits if not owner', async () => {
     try {
-      await instance.enableDepositLimits({ from: accounts[1] });
+      await instance.enableBalanceLimits({ from: accounts[1] });
     } catch (error) {
       return;
     }
@@ -443,12 +463,12 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should enable all deposit limits correctly', async () => {
-    const tx = await instance.enableDepositLimits({ from: accounts[0] });
-    fs.appendFileSync(GAS_USED_LOG, 'enableDepositLimits(): ' + getCallGasUsed(tx) + '\n');
+    const tx = await instance.enableBalanceLimits({ from: accounts[0] });
+    fs.appendFileSync(GAS_USED_LOG, 'enableBalanceLimits(): ' + getCallGasUsed(tx) + '\n');
 
-    const depositLimitsEnabled = await instance.depositLimitsEnabled.call();
-    const limit = await instance.depositLimits.call(ETH_ADDR);
-    assert.equal(depositLimitsEnabled, true);
+    const balanceLimitsEnabled = await instance.getBalanceLimitsEnabled.call();
+    const limit = await instance.getBalanceLimit.call(ETH_ADDR);
+    assert.equal(balanceLimitsEnabled, true);
     assert.equal(limit.toString(), '60');
   });
 
@@ -465,7 +485,7 @@ contract('CelerChannel using ETH', async accounts => {
       );
     } catch (error) {
       assert.isAbove(
-        error.message.search('Deposits exceed limit'),
+        error.message.search('Balance exceeds limit'),
         -1
       );
       return;
@@ -475,29 +495,30 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should deposit via EthPool correctly', async () => {
-    await instance.disableDepositLimits({ from: accounts[0] });
+    await instance.disableBalanceLimits({ from: accounts[0] });
     await ethPool.approve(instance.address, 100, { from: peers[0] });
     const tx = await instance.deposit(channelId, peers[0], 100, { from: peers[0] });
     fs.appendFileSync(GAS_USED_LOG, 'deposit() via EthPool: ' + getCallGasUsed(tx) + '\n');
 
     const { event, args } = tx.logs[0];
-    const amount = await instance.getDepositAmount(channelId, peers[0]);
-    const depositMap = await instance.getDepositMap(channelId);
-    const channelPeers = depositMap[0];
-    const channelBalances = depositMap[1];
+    const balanceAmt = await instance.getTotalBalance(channelId);
+    const balanceMap = await instance.getBalanceMap(channelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
 
     assert.equal(event, 'Deposit');
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [200, 0]);
-    assert.equal(amount, 200);
+    assert.equal(args.deposits.toString(), [200, 0]);
+    assert.equal(args.withdrawals.toString(), [0, 0]);
+    assert.equal(balanceAmt, 200);
     assert.deepEqual(channelPeers, peers);
-    assert.equal(channelBalances.toString(), [200, 0]);
-
-    // balances = [200, 0]
+    assert.equal(deposits.toString(), [200, 0]);
+    assert.equal(withdrawals.toString(), [0, 0]);
   });
 
   it('should intendWithdraw correctly', async () => {
-    const tx = await instance.intendWithdraw(channelId, 200, 0, { from: peers[0] });
+    const tx = await instance.intendWithdraw(channelId, 200, ZERO_CHANNELID, { from: peers[0] });
     const { event, args } = tx.logs[0];
     fs.appendFileSync(GAS_USED_LOG, 'intendWithdraw(): ' + getCallGasUsed(tx) + '\n');
 
@@ -509,7 +530,7 @@ contract('CelerChannel using ETH', async accounts => {
 
   it('should fail to intendWithdraw when there is a pending WithdrawIntent', async () => {
     try {
-      await instance.intendWithdraw(channelId, 200, 0, { from: peers[0] });
+      await instance.intendWithdraw(channelId, 200, ZERO_CHANNELID, { from: peers[0] });
     } catch (error) {
       assert.isAbove(
         error.message.search('Pending withdraw intent exists'),
@@ -552,7 +573,7 @@ contract('CelerChannel using ETH', async accounts => {
       await instance.confirmWithdraw(channelId, { from: accounts[9] });
     } catch (error) {
       assert.isAbove(
-        error.message.search('Withdraw receiver is 0'),
+        error.message.search('No pending withdraw intent'),
         -1
       );
       return;
@@ -562,7 +583,7 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should confirmWithdraw correctly', async () => {
-    await instance.intendWithdraw(channelId, 200, 0, { from: peers[0] });
+    await instance.intendWithdraw(channelId, 200, ZERO_CHANNELID, { from: peers[0] });
 
     const block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
@@ -573,12 +594,11 @@ contract('CelerChannel using ETH', async accounts => {
 
     assert.equal(event, 'ConfirmWithdraw');
     assert.equal(args.channelId, channelId);
-    assert.equal(args.withdrawalAmounts.toString(), [200, 0]);
+    assert.equal(args.withdrawnAmount.toString(), 200);
     assert.equal(args.receiver, peers[0]);
-    assert.equal(args.recipientChannelId, 0);
-    assert.equal(args.balances.toString(), [0, 0]);
-
-    // balances = [0, 0]
+    assert.equal(args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(args.deposits.toString(), [200, 0]);
+    assert.equal(args.withdrawals.toString(), [200, 0]);
   });
 
   it('should fail to confirmWithdraw again after confirmWithdraw', async () => {
@@ -586,7 +606,7 @@ contract('CelerChannel using ETH', async accounts => {
       await instance.confirmWithdraw(channelId, { from: accounts[9] });
     } catch (error) {
       assert.isAbove(
-        error.message.search('Withdraw receiver is 0'),
+        error.message.search('No pending withdraw intent'),
         -1
       );
       return;
@@ -596,9 +616,12 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should fail to intendWithdraw and confirmWithdraw from an ETH channel to an ERC20 channel', async () => {
+    // deposit for this and following tests
+    await instance.deposit(channelId, peers[0], 0, { value: 200 });
+
     const eRC20ExampleToken = await ERC20ExampleToken.new();
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true,
       tokenType: 2,
@@ -609,7 +632,6 @@ contract('CelerChannel using ETH', async accounts => {
     const tx = await instance.openChannel(openChannelRequest);
     eRC20ChannelId = tx.logs[0].args.channelId.toString();
 
-    await instance.deposit(channelId, peers[0], 0, { value: 200 });
     await instance.intendWithdraw(channelId, 200, eRC20ChannelId, { from: peers[0] });
 
     const block = await web3.eth.getBlock('latest');
@@ -630,8 +652,6 @@ contract('CelerChannel using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
-
-    // balances = [200, 0]
   });
 
   it('should fail to intendWithdraw and confirmWithdraw to another channel without such a receiver', async () => {
@@ -655,14 +675,12 @@ contract('CelerChannel using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
-
-    // balances = [200, 0]
   });
 
   it('should intendWithdraw and confirmWithdraw to another channel correctly', async () => {
     // open another channel with an overlapped peer
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true,
       channelPeers: overlappedPeers
@@ -680,31 +698,40 @@ contract('CelerChannel using ETH', async accounts => {
 
     assert.equal(tx.logs[0].event, 'ConfirmWithdraw');
     assert.equal(tx.logs[0].args.channelId, channelId);
-    assert.equal(tx.logs[0].args.withdrawalAmounts.toString(), [200, 0]);
+    assert.equal(tx.logs[0].args.withdrawnAmount.toString(), 200);
     assert.equal(tx.logs[0].args.receiver, peers[0]);
     assert.equal(tx.logs[0].args.recipientChannelId, overlappedPeersChannelId);
-    assert.equal(tx.logs[0].args.balances.toString(), [0, 0]);
+    assert.equal(tx.logs[0].args.deposits.toString(), [400, 0]);
+    assert.equal(tx.logs[0].args.withdrawals.toString(), [400, 0]);
 
-    let expectedBalances;
+    let expectedDeposits;
     if (overlappedPeers[0] == peers[0]) {
-      expectedBalances = [200, 0];
+      expectedDeposits = [200, 0];
     } else {
-      expectedBalances = [0, 200];
+      expectedDeposits = [0, 200];
     }
     assert.equal(tx.logs[1].event, 'Deposit');
     assert.equal(tx.logs[1].args.channelId, overlappedPeersChannelId);
     assert.deepEqual(tx.logs[1].args.peerAddrs, overlappedPeers);
-    assert.equal(tx.logs[1].args.balances.toString(), expectedBalances);
+    assert.equal(tx.logs[1].args.deposits.toString(), expectedDeposits);
+    assert.equal(tx.logs[1].args.withdrawals.toString(), [0, 0]);
 
-    const balance = await instance.getDepositAmount(overlappedPeersChannelId, peers[0]);
-    assert.equal(balance.toString(), 200);
+    const balanceAmt = await instance.getTotalBalance(overlappedPeersChannelId);
+    const balanceMap = await instance.getBalanceMap(overlappedPeersChannelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
 
-    // balances = [0, 0]
+    assert.equal(balanceAmt.toString(), 200);
+    assert.deepEqual(channelPeers, overlappedPeers);
+    assert.equal(deposits.toString(), expectedDeposits);
+    assert.equal(withdrawals.toString(), [0, 0]);
+
+    // deposit for future tests
+    await instance.deposit(channelId, peers[0], 0, { value: 200 });
   });
 
   it('should fail to cooperativeWithdraw after withdraw deadline', async () => {
-    await instance.deposit(channelId, peers[0], 0, { value: 200 });
-
     const cooperativeWithdrawRequestBytes = await getCooperativeWithdrawRequestBytes({
       channelId: channelId,
       amount: 200,
@@ -723,8 +750,6 @@ contract('CelerChannel using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
-
-    // balances = [200, 0]
   });
 
   it('should cooperativeWithdraw correctly when receiver has enough deposit', async () => {
@@ -745,20 +770,21 @@ contract('CelerChannel using ETH', async accounts => {
 
     assert.equal(event, 'CooperativeWithdraw');
     assert.equal(args.channelId, channelId);
-    assert.equal(args.withdrawalAmounts.toString(), [200, 0]);
+    assert.equal(args.withdrawnAmount.toString(), 200);
     assert.equal(args.receiver, peers[0]);
-    assert.equal(args.recipientChannelId, 0);
-    assert.equal(args.balances.toString(), [0, 0]);
+    assert.equal(args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(args.deposits.toString(), [600, 0]);
+    assert.equal(args.withdrawals.toString(), [600, 0]);
     assert.equal(args.seqNum, coWithdrawSeqNum - 1);
-
-    // balances = [0, 0]
   });
 
   it('should fail to cooperativeWithdraw when using an unexpected seqNum', async () => {
+    // deposit only used in this test
+    await instance.deposit(channelId, peers[0], 0, { value: 10 });
+
     let cooperativeWithdrawRequestBytes;
     let cooperativeWithdrawRequest;
     let flag = false;
-    await instance.deposit(channelId, peers[0], 0, { value: 10 });
 
     // smaller seqNum than expected one
     cooperativeWithdrawRequestBytes = await getCooperativeWithdrawRequestBytes({
@@ -817,13 +843,12 @@ contract('CelerChannel using ETH', async accounts => {
 
     assert.equal(event, 'CooperativeWithdraw');
     assert.equal(args.channelId, channelId);
-    assert.equal(args.withdrawalAmounts.toString(), [10, 0]);
+    assert.equal(args.withdrawnAmount.toString(), 10);
     assert.equal(args.receiver, peers[0]);
-    assert.equal(args.recipientChannelId, 0);
-    assert.equal(args.balances.toString(), [0, 0]);
+    assert.equal(args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(args.deposits.toString(), [610, 0]);
+    assert.equal(args.withdrawals.toString(), [610, 0]);
     assert.equal(args.seqNum, coWithdrawSeqNum - 1);
-
-    // balances = [0, 0]
   });
 
   it('should cooperativeWithdraw correctly when receiver doesn\'t have enough deposit but the whole channel does', async () => {
@@ -843,22 +868,24 @@ contract('CelerChannel using ETH', async accounts => {
       { from: accounts[2] }
     );
     const { event, args } = tx.logs[0];
+    const balanceAmt = await instance.getTotalBalance(channelId);
+    const balanceMap = await instance.getBalanceMap(channelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
 
     assert.equal(event, 'CooperativeWithdraw');
     assert.equal(args.channelId, channelId);
-    assert.equal(args.withdrawalAmounts.toString(), [160, 40]);
+    assert.equal(args.withdrawnAmount.toString(), 200);
     assert.equal(args.receiver, peers[0]);
-    assert.equal(args.recipientChannelId, 0);
-    assert.equal(args.balances.toString(), [0, 0]);
+    assert.equal(args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(args.deposits.toString(), [770, 40]);
+    assert.equal(args.withdrawals.toString(), [810, 0]);
     assert.equal(args.seqNum, coWithdrawSeqNum - 1);
-
-    const owedDeposit = await instance.getOwedDepositAmount.call(channelId, peers[0]);
-    assert.equal(owedDeposit.toString(), '40');
-    const owedDepositMap = await instance.getOwedDepositMap.call(channelId);
-    assert.equal(owedDepositMap[1].toString(), [40, 0]);
-
-    // balances = [0, 0]
-    // owedDeposit = [40, 0]
+    assert.equal(balanceAmt.toString(), 0);
+    assert.deepEqual(channelPeers, peers);
+    assert.equal(deposits.toString(), [770, 40]);
+    assert.equal(withdrawals.toString(), [810, 0]);
   });
 
   it('should cooperativeWithdraw to another channel correctly', async () => {
@@ -877,33 +904,41 @@ contract('CelerChannel using ETH', async accounts => {
 
     assert.equal(tx.logs[0].event, 'CooperativeWithdraw');
     assert.equal(tx.logs[0].args.channelId, channelId);
-    assert.equal(tx.logs[0].args.withdrawalAmounts.toString(), [200, 0]);
+    assert.equal(tx.logs[0].args.withdrawnAmount.toString(), 200);
     assert.equal(tx.logs[0].args.receiver, peers[0]);
     assert.equal(tx.logs[0].args.recipientChannelId, overlappedPeersChannelId);
-    assert.equal(tx.logs[0].args.balances.toString(), [0, 0]);
+    assert.equal(tx.logs[0].args.deposits.toString(), [970, 40]);
+    assert.equal(tx.logs[0].args.withdrawals.toString(), [1010, 0]);
     assert.equal(tx.logs[0].args.seqNum, 4);
 
-    let expectedBalances;
+    let expectedDeposits;
     if (overlappedPeers[0] == peers[0]) {
-      expectedBalances = [400, 0];
+      expectedDeposits = [400, 0];
     } else {
-      expectedBalances = [0, 400];
+      expectedDeposits = [0, 400];
     }
     assert.equal(tx.logs[1].event, 'Deposit');
     assert.equal(tx.logs[1].args.channelId, overlappedPeersChannelId);
     assert.deepEqual(tx.logs[1].args.peerAddrs, overlappedPeers);
-    assert.equal(tx.logs[1].args.balances.toString(), expectedBalances);
+    assert.equal(tx.logs[1].args.deposits.toString(), expectedDeposits);
+    assert.equal(tx.logs[1].args.withdrawals.toString(), [0, 0]);
 
-    const balance = await instance.getDepositAmount(overlappedPeersChannelId, peers[0]);
-    assert.equal(balance.toString(), 400);
+    const balanceAmt = await instance.getTotalBalance(overlappedPeersChannelId);
+    const balanceMap = await instance.getBalanceMap(overlappedPeersChannelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
 
-    // balances = [0, 0]
-    // owedDeposit = [40, 0]
+    assert.equal(balanceAmt.toString(), 400);
+    assert.deepEqual(channelPeers, overlappedPeers);
+    assert.equal(deposits.toString(), expectedDeposits);
+    assert.equal(withdrawals.toString(), [0, 0]);
+
+    // deposit for future tests
+    await instance.deposit(channelId, peers[0], 0, { value: 100 });
   });
 
   it('should fail to cooperativeWithdraw to another channel without such a receiver', async () => {
-    await instance.deposit(channelId, peers[0], 0, { value: 100 });
-
     const cooperativeWithdrawRequestBytes = await getCooperativeWithdrawRequestBytes({
       channelId: channelId,
       amount: 100,
@@ -923,9 +958,6 @@ contract('CelerChannel using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
-
-    // balances = [100, 0]
-    // owedDeposit = [40, 0]
   });
 
   it('should fail to cooperativeWithdraw from an ETH channel to an ERC20 channel', async () => {
@@ -957,26 +989,24 @@ contract('CelerChannel using ETH', async accounts => {
       const tx = await instance.cooperativeWithdraw(cooperativeWithdrawRequest);
       const { event, args } = tx.logs[0];
       assert.equal(event, 'CooperativeWithdraw');
-      assert.equal(args.withdrawalAmounts.toString(), [100, 0]);
+      assert.equal(args.withdrawnAmount.toString(), 100);
 
       return;
     }
 
     assert.fail('should have thrown before');
-
-    // balances = [0, 0]
-    // owedDeposit = [40, 0]
   });
 
   it('should fail to intendSettle when some pays in head list are not finalized before last pay resolve deadline', async () => {
     globalResult = await getCoSignedIntendSettle(
-      getPayHashListInfo,
+      getPayIdListInfo,
       getSignedSimplexStateArrayBytes,
       [channelId, channelId],
       PEERS_PAY_HASH_LISTS_AMTS,
       [1, 1],  // seqNums
       [999999999, 9999999999],  // lastPayResolveDeadlines
-      [10, 20]  // transferAmounts
+      [10, 20],  // transferAmounts
+      payResolver.address  // payResolverAddr
     );
     const signedSimplexStateArrayBytes = globalResult.signedSimplexStateArrayBytes;
 
@@ -984,9 +1014,10 @@ contract('CelerChannel using ETH', async accounts => {
     const requestBytes = getResolvePayByConditionsRequestBytes({
       condPayBytes: globalResult.condPays[0][0][0]
     });
-    await payRegistry.resolvePaymentByConditions(requestBytes);
+    await payResolver.resolvePaymentByConditions(requestBytes);
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block;
     block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
@@ -1009,23 +1040,24 @@ contract('CelerChannel using ETH', async accounts => {
   it('should intendSettle correctly when all pays in head list are finalized before last pay resolve deadline', async () => {
     const signedSimplexStateArrayBytes = globalResult.signedSimplexStateArrayBytes;
 
-    // resolve the payments in head PayHashList
+    // resolve the payments in head PayIdList
     // the head list of peerFrom 0. Already resolved the first payment in last test case
     for (let i = 1; i < globalResult.condPays[0][0].length; i++) {
       const requestBytes = getResolvePayByConditionsRequestBytes({
         condPayBytes: globalResult.condPays[0][0][i]
       });
-      await payRegistry.resolvePaymentByConditions(requestBytes);
+      await payResolver.resolvePaymentByConditions(requestBytes);
     }
     // the head list of peerFrom 1
     for (let i = 0; i < globalResult.condPays[1][0].length; i++) {
       const requestBytes = getResolvePayByConditionsRequestBytes({
         condPayBytes: globalResult.condPays[1][0][i]
       });
-      await payRegistry.resolvePaymentByConditions(requestBytes);
+      await payResolver.resolvePaymentByConditions(requestBytes);
     }
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block;
     block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
@@ -1042,15 +1074,15 @@ contract('CelerChannel using ETH', async accounts => {
     const status = await instance.getChannelStatus(channelId);
     assert.equal(status, 2);
 
-    let payHash;
     const amounts = [1, 2, 5, 6];
     for (let i = 0; i < 2; i++) {  // for each simplex state
-      for (j = 0; j < 2; j++) {  // for each pays in head PayHashList
+      for (j = 0; j < 2; j++) {  // for each pays in head PayIdList
         const logIndex = i * 2 + j;
         assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
         assert.equal(tx.logs[logIndex].args.channelId, channelId);
-        payHash = sha3(web3.utils.bytesToHex(globalResult.condPays[i][0][j]));
-        assert.equal(tx.logs[logIndex].args.condPayHash, payHash);
+        const payHash = sha3(web3.utils.bytesToHex(globalResult.condPays[i][0][j]));
+        const payId = calculatePayId(payHash, payResolver.address);
+        assert.equal(tx.logs[logIndex].args.payId, payId);
         assert.equal(tx.logs[logIndex].args.peerFrom, peers[i]);
         assert.equal(tx.logs[logIndex].args.amount.toString(), amounts[logIndex]);
       }
@@ -1066,7 +1098,7 @@ contract('CelerChannel using ETH', async accounts => {
       await instance.liquidatePays(
         channelId,
         peers[0],
-        globalResult.payHashListBytesArrays[0][1]
+        globalResult.payIdListBytesArrays[0][1]
       );
     } catch (error) {
       assert.isAbove(
@@ -1087,35 +1119,36 @@ contract('CelerChannel using ETH', async accounts => {
           const requestBytes = getResolvePayByConditionsRequestBytes({
             condPayBytes: globalResult.condPays[peerIndex][listIndex][payIndex]
           });
-          await payRegistry.resolvePaymentByConditions(requestBytes);
+          await payResolver.resolvePaymentByConditions(requestBytes);
         }
       }
     }
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block;
     block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
 
     let tx;
-    let payHash;
     const amounts = [[3, 4], [7, 8]];
 
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {  // for each simplex state
       tx = await instance.liquidatePays(
         channelId,
         peers[peerIndex],
-        globalResult.payHashListBytesArrays[peerIndex][1]
+        globalResult.payIdListBytesArrays[peerIndex][1]
       );
       let count = 0;
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
         for (payIndex = 0; payIndex < globalResult.condPays[peerIndex][listIndex].length; payIndex++) {
           assert.equal(tx.logs[count].event, 'LiquidateOnePay');
           assert.equal(tx.logs[count].args.channelId, channelId);
-          payHash = sha3(web3.utils.bytesToHex(
+          const payHash = sha3(web3.utils.bytesToHex(
             globalResult.condPays[peerIndex][listIndex][payIndex]
           ));
-          assert.equal(tx.logs[count].args.condPayHash, payHash);
+          const payId = calculatePayId(payHash, payResolver.address);
+          assert.equal(tx.logs[count].args.payId, payId);
           assert.equal(tx.logs[count].args.peerFrom, peers[peerIndex]);
           assert.equal(tx.logs[count].args.amount, amounts[peerIndex][count]);
           count++;
@@ -1145,23 +1178,28 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should ConfirmSettleFail due to lack of deposit', async () => {
-    //  update balances to [10, 20]
-    await instance.deposit(channelId, peers[0], 0, { value: 10 });
-    await instance.deposit(channelId, peers[1], 0, { value: 20 });
-
     const settleFinalizedTime = await instance.getSettleFinalizedTime(channelId);
     await mineBlockUntil(settleFinalizedTime, accounts[0]);
 
     const tx = await instance.confirmSettle(channelId);
     const status = await instance.getChannelStatus(channelId);
-    const depositMap = await instance.getDepositMap(channelId);
-    const channelBalances = depositMap[1];
+    let balanceMap = await instance.getBalanceMap(channelId);
+    let deposits = balanceMap[1];
+    let withdrawals = balanceMap[2];
 
     assert.equal(tx.logs[0].event, 'ConfirmSettleFail');
     assert.equal(status, 1);
-    assert.equal(channelBalances.toString(), [10, 20]);
+    assert.equal(deposits.toString(), [1070, 40]);
+    assert.equal(withdrawals.toString(), [1110, 0]);
 
-    // balances = [10, 20]
+    //  update balances to [100, 100] to make future settle balance correct
+    await instance.deposit(channelId, peers[0], 0, { value: 100 });
+    await instance.deposit(channelId, peers[1], 0, { value: 100 });
+    balanceMap = await instance.getBalanceMap(channelId);
+    deposits = balanceMap[1];
+    withdrawals = balanceMap[2];
+    assert.equal(deposits.toString(), [1170, 140]);
+    assert.equal(withdrawals.toString(), [1110, 0]);
   });
 
   it('should liquidatePays correctly after settleFinalizedTime', async () => {
@@ -1173,55 +1211,56 @@ contract('CelerChannel using ETH', async accounts => {
     await mineBlockUntil(settleFinalizedTime, accounts[0]);
 
     let tx;
-    let payHash;
     const amounts = [[3, 4], [7, 8]];
 
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {  // for each simplex state
       tx = await instance.liquidatePays(
         channelId,
         peers[peerIndex],
-        globalResult.payHashListBytesArrays[peerIndex][1]
+        globalResult.payIdListBytesArrays[peerIndex][1]
       );
       let count = 0;
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
         for (payIndex = 0; payIndex < globalResult.condPays[peerIndex][listIndex].length; payIndex++) {
           assert.equal(tx.logs[count].event, 'LiquidateOnePay');
           assert.equal(tx.logs[count].args.channelId, channelId);
-          payHash = sha3(web3.utils.bytesToHex(
+          const payHash = sha3(web3.utils.bytesToHex(
             globalResult.condPays[peerIndex][listIndex][payIndex]
           ));
-          assert.equal(tx.logs[count].args.condPayHash, payHash);
+          const payId = calculatePayId(payHash, payResolver.address);
+          assert.equal(tx.logs[count].args.payId, payId);
           assert.equal(tx.logs[count].args.peerFrom, peers[peerIndex]);
           assert.equal(tx.logs[count].args.amount, amounts[peerIndex][count]);
           count++;
         }
       }
     }
-    // balances = [10, 20]
   });
 
   it('should fail to intendSettle after settleFinalizedTime', async () => {
     const result = await getCoSignedIntendSettle(
-      getPayHashListInfo,
+      getPayIdListInfo,
       getSignedSimplexStateArrayBytes,
       [channelId, channelId],
       PEERS_PAY_HASH_LISTS_AMTS,
       [5, 5],  // seqNums
       [999999999, 9999999999],  // lastPayResolveDeadlines
-      [10, 20]  // transferAmounts
+      [10, 20],  // transferAmounts
+      payResolver.address  // payResolverAddr
     );
     const signedSimplexStateArrayBytes = result.signedSimplexStateArrayBytes;
-    // resolve the payments in head PayHashList
+    // resolve the payments in head PayIdList
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {
       for (payIndex = 0; payIndex < result.condPays[peerIndex][0].length; payIndex++) {
         const requestBytes = getResolvePayByConditionsRequestBytes({
           condPayBytes: result.condPays[peerIndex][0][payIndex]
         });
-        await payRegistry.resolvePaymentByConditions(requestBytes);
+        await payResolver.resolvePaymentByConditions(requestBytes);
       }
     }
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block;
     block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
@@ -1238,17 +1277,9 @@ contract('CelerChannel using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
-    // balances = [10, 20]
   });
 
   it('should confirmSettle correctly', async () => {
-    //  update balances to [100, 100]
-    await instance.deposit(channelId, peers[0], 0, { value: 90 });
-    await instance.deposit(channelId, peers[1], 0, { value: 80 });
-    const depositMap = await instance.getDepositMap(channelId);
-    const channelBalances = depositMap[1];
-    assert.equal(channelBalances.toString(), [100, 100]);
-
     let tx = await instance.confirmSettle(
       channelId,
       { from: accounts[2] }  // let peers not pay for gas
@@ -1267,7 +1298,7 @@ contract('CelerChannel using ETH', async accounts => {
     await ethPool.approve(instance.address, 200, { from: peers[1] });
 
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
@@ -1277,21 +1308,21 @@ contract('CelerChannel using ETH', async accounts => {
     fs.appendFileSync(GAS_USED_LOG, 'openChannel() using EthPool and msg.value: ' + getCallGasUsed(tx) + '\n');
     channelId = args.channelId.toString();
 
-    assert.equal(channelId, request.channelId);
+    // assert.equal(channelId, request.channelId);
     assert.equal(event, 'OpenChannel');
     assert.equal(args.tokenType, 1); //  '1' for ETH
     assert.equal(args.tokenAddress, ETH_ADDR);
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [100, 200]);
+    assert.equal(args.initialDeposits.toString(), [100, 200]);
   });
 
-  it('should open a channel correctly when total deposit is larger than zero, and msgValueRecipient is 1, and caller is not peers', async () => {
+  it('should open a channel correctly when total deposit is larger than zero, and msgValueReceiver is 1, and caller is not peers', async () => {
     await ethPool.approve(instance.address, 100, { from: peers[0] });
 
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
-      msgValueRecipient: 1
+      msgValueReceiver: 1
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
 
@@ -1305,12 +1336,12 @@ contract('CelerChannel using ETH', async accounts => {
     const { event, args } = tx.logs[0];
     channelId = args.channelId.toString();
 
-    assert.equal(channelId, request.channelId);
+    // assert.equal(channelId, request.channelId);
     assert.equal(event, 'OpenChannel');
     assert.equal(args.tokenType, 1); //  '1' for ETH
     assert.equal(args.tokenAddress, ETH_ADDR);
     assert.deepEqual(args.peerAddrs, peers);
-    assert.equal(args.balances.toString(), [100, 200]);
+    assert.equal(args.initialDeposits.toString(), [100, 200]);
   });
 
   it('should fail to cooperativeSettle when submitted sum is not equal to deposit sum', async () => {
@@ -1358,22 +1389,22 @@ contract('CelerChannel using ETH', async accounts => {
     // open a new channel
     await ethPool.approve(instance.address, 200, { from: peers[1] });
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
-      openDeadline: 100000000,  // make initializer hash different
-      disputeTimeout: DISPUTE_TIMEOUT,
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
     let tx = await instance.openChannel(openChannelRequest, { value: 100 });
     channelId = tx.logs[0].args.channelId.toString();
 
     const result = await getCoSignedIntendSettle(
-      getPayHashListInfo,
+      getPayIdListInfo,
       getSignedSimplexStateArrayBytes,
       [channelId, channelId],
       PEERS_PAY_HASH_LISTS_AMTS,
       [1, 1],  // seqNums
       [2, 2],  // lastPayResolveDeadlines
-      [10, 20]  // transferAmounts
+      [10, 20],  // transferAmounts
+      payResolver.address  // payResolverAddr
     );
     const signedSimplexStateArrayBytes = result.signedSimplexStateArrayBytes;
     const condPays = result.condPays;
@@ -1393,14 +1424,14 @@ contract('CelerChannel using ETH', async accounts => {
     const status = await instance.getChannelStatus(channelId);
     assert.equal(status, 2);
 
-    let payHash;
     for (let i = 0; i < 2; i++) {  // for each simplex state
-      for (j = 0; j < 2; j++) {  // for each pays in head PayHashList
+      for (j = 0; j < 2; j++) {  // for each pays in head PayIdList
         const logIndex = i * 2 + j;
         assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
-        assert.equal(tx.logs[logIndex].args.channelId, request.channelId);
-        payHash = sha3(web3.utils.bytesToHex(condPays[i][0][j]));
-        assert.equal(tx.logs[logIndex].args.condPayHash, payHash);
+        // assert.equal(tx.logs[logIndex].args.channelId, request.channelId);
+        const payHash = sha3(web3.utils.bytesToHex(condPays[i][0][j]));
+        const payId = calculatePayId(payHash, payResolver.address);
+        assert.equal(tx.logs[logIndex].args.payId, payId);
         assert.equal(tx.logs[logIndex].args.peerFrom, peers[i]);
         assert.equal(tx.logs[logIndex].args.amount, 0);
       }
@@ -1431,9 +1462,8 @@ contract('CelerChannel using ETH', async accounts => {
     // open a new channel
     await ethPool.approve(instance.address, 200, { from: peers[1] });
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
-      openDeadline: 100000001,  // make initializer hash different
-      disputeTimeout: DISPUTE_TIMEOUT,
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
     let tx = await instance.openChannel(openChannelRequest, { value: 100 });
@@ -1442,7 +1472,8 @@ contract('CelerChannel using ETH', async accounts => {
     singleSignedNullStateBytes = await getSignedSimplexStateArrayBytes({
       channelIds: [channelId],
       seqNums: [0],
-      signers: [peers[0]]
+      signers: [peers[0]],
+      totalPendingAmounts: [0]
     });
 
     // intend settle
@@ -1494,33 +1525,37 @@ contract('CelerChannel using ETH', async accounts => {
     // open a new channel
     await ethPool.approve(instance.address, 200, { from: peers[1] });
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
-      openDeadline: 100000002,  // make initializer hash different
-      disputeTimeout: DISPUTE_TIMEOUT,
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
     let tx = await instance.openChannel(openChannelRequest, { value: 100 });
     channelId = tx.logs[0].args.channelId.toString();
 
-    const payHashListInfo = getPayHashListInfo({ payAmounts: [[1, 2]] });
+    const payIdListInfo = getPayIdListInfo({
+      payAmounts: [[1, 2]],
+      payResolverAddr: payResolver.address
+    });
     const signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
       channelIds: [channelId],
       seqNums: [5],
       lastPayResolveDeadlines: [999999],
-      payHashLists: [payHashListInfo.payHashListProtos[0]],
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
       transferAmounts: [10],
-      peerFroms: [peers[0]]
+      peerFroms: [peers[0]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
     });
 
-    // resolve the payments in head PayHashList
-    for (let i = 0; i < payHashListInfo.payBytesArray[0].length; i++) {
+    // resolve the payments in head PayIdList
+    for (let i = 0; i < payIdListInfo.payBytesArray[0].length; i++) {
       const requestBytes = getResolvePayByConditionsRequestBytes({
-        condPayBytes: payHashListInfo.payBytesArray[0][i]
+        condPayBytes: payIdListInfo.payBytesArray[0][i]
       });
-      await payRegistry.resolvePaymentByConditions(requestBytes);
+      await payResolver.resolvePaymentByConditions(requestBytes);
     }
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
 
@@ -1537,11 +1572,12 @@ contract('CelerChannel using ETH', async accounts => {
     assert.equal(status, 2);
 
     const amounts = [1, 2];
-    for (let i = 0; i < 2; i++) {  // for each pays in head PayHashList
+    for (let i = 0; i < 2; i++) {  // for each pays in head PayIdList
       assert.equal(tx.logs[i].event, 'LiquidateOnePay');
       assert.equal(tx.logs[i].args.channelId, channelId);
-      const payHash = sha3(web3.utils.bytesToHex(payHashListInfo.payBytesArray[0][i]));
-      assert.equal(tx.logs[i].args.condPayHash, payHash);
+      const payHash = sha3(web3.utils.bytesToHex(payIdListInfo.payBytesArray[0][i]));
+      const payId = calculatePayId(payHash, payResolver.address);
+      assert.equal(tx.logs[i].args.payId, payId);
       assert.equal(tx.logs[i].args.peerFrom, peers[0]);
       assert.equal(tx.logs[i].args.amount, amounts[i]);
     }
@@ -1572,9 +1608,8 @@ contract('CelerChannel using ETH', async accounts => {
     await ethPool.approve(instance.address, 200 * 3, { from: peers[1] });
     for (let i = 0; i < 3; i++) {
       const request = await getOpenChannelRequest({
-        celerChannelAddress: instance.address,
-        openDeadline: 100000003 + i,  // make initializer hash different
-        disputeTimeout: DISPUTE_TIMEOUT,
+        openDeadline: uniqueOpenDeadline++,
+        disputeTimeout: DISPUTE_TIMEOUT
       });
       const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
       tx = await instance.openChannel(openChannelRequest, { value: 100 });
@@ -1586,23 +1621,25 @@ contract('CelerChannel using ETH', async accounts => {
     channelIds = reorder(channelIds, sortIndeces);
     const peerFroms = reorder([peers[0], peers[1], peers[0], null], sortIndeces);
     // prepare for intendSettle
-    let payHashListInfos = [
+    let payIdListInfos = [
       // 1 pair of simplex states
-      getPayHashListInfo({ payAmounts: [[1, 2]] }),
-      getPayHashListInfo({ payAmounts: [[3, 4]] }),
+      getPayIdListInfo({ payAmounts: [[1, 2]], payResolverAddr: payResolver.address }),
+      getPayIdListInfo({ payAmounts: [[3, 4]], payResolverAddr: payResolver.address }),
       // 1 non-null simplex state
-      getPayHashListInfo({ payAmounts: [[1, 2]] }),
-      // 1 null simplex state doesn't need payHashList, keep this as null
+      getPayIdListInfo({ payAmounts: [[1, 2]], payResolverAddr: payResolver.address }),
+      // 1 null simplex state doesn't need payIdList, keep this as null
       null
     ];
-    const payAmounts = reorder([[1, 2], [3, 4], [1, 2], null], sortIndeces);
-    let payHashLists = [
-      payHashListInfos[0].payHashListProtos[0],
-      payHashListInfos[1].payHashListProtos[0],
-      payHashListInfos[2].payHashListProtos[0],
-      null
-    ];
-    payHashListInfos = reorder(payHashListInfos, sortIndeces);
+    const payAmounts = reorder([[1, 2], [3, 4], [1, 2], [0, 0]], sortIndeces);
+    payIdListInfos = reorder(payIdListInfos, sortIndeces);
+    let payIdLists = [];
+    for (let i = 0; i < 4; i++) {
+      if (payIdListInfos[i] == null) {
+        payIdLists[i] = null;
+      } else {
+        payIdLists[i] = payIdListInfos[i].payIdListProtos[0];
+      }
+    }
     const seqNums = reorder([1, 1, 5, 0], sortIndeces);
     const seqNumsArray = reorder([[1, 1], [1, 1], [5, 0], [0, 0]], sortIndeces);
 
@@ -1611,23 +1648,30 @@ contract('CelerChannel using ETH', async accounts => {
       seqNums: seqNums,
       transferAmounts: reorder([10, 20, 30, null], sortIndeces),
       lastPayResolveDeadlines: reorder([999999, 999999, 999999, null], sortIndeces),
-      payHashLists: reorder(payHashLists, sortIndeces),
+      payIdLists: payIdLists,
       peerFroms: peerFroms,
-      signers: reorder([null, null, null, peers[0]], sortIndeces)
+      signers: reorder([null, null, null, peers[0]], sortIndeces),
+      totalPendingAmounts: [
+        payAmounts[0][0] + payAmounts[0][1],
+        payAmounts[1][0] + payAmounts[1][1],
+        payAmounts[2][0] + payAmounts[2][1],
+        payAmounts[3][0] + payAmounts[3][1]
+      ]
     });
 
-    // resolve the payments in all head PayHashLists
-    for (let i = 0; i < payHashListInfos.length; i++) {
-      if (payHashListInfos[i] == null) continue;
-      for (j = 0; j < payHashListInfos[i].payBytesArray[0].length; j++) {
+    // resolve the payments in all head PayIdLists
+    for (let i = 0; i < payIdListInfos.length; i++) {
+      if (payIdListInfos[i] == null) continue;
+      for (j = 0; j < payIdListInfos[i].payBytesArray[0].length; j++) {
         const requestBytes = getResolvePayByConditionsRequestBytes({
-          condPayBytes: payHashListInfos[i].payBytesArray[0][j]
+          condPayBytes: payIdListInfos[i].payBytesArray[0][j]
         });
-        await payRegistry.resolvePaymentByConditions(requestBytes);
+        await payResolver.resolvePaymentByConditions(requestBytes);
       }
     }
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
 
@@ -1644,17 +1688,17 @@ contract('CelerChannel using ETH', async accounts => {
       assert.equal(status, 2);
     }
 
-    let payHash;
     let logIndex = 0;
     // for each simplex state
     for (let i = 0; i < channelIds.length; i++) {
-      if (payHashListInfos[i] != null) {
-        // for each pays in head PayHashList
-        for (j = 0; j < payHashListInfos[i].payBytesArray[0].length; j++) {
+      if (payIdListInfos[i] != null) {
+        // for each pays in head PayIdList
+        for (j = 0; j < payIdListInfos[i].payBytesArray[0].length; j++) {
           assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
           assert.equal(tx.logs[logIndex].args.channelId, channelIds[i]);
-          payHash = sha3(web3.utils.bytesToHex(payHashListInfos[i].payBytesArray[0][j]));
-          assert.equal(tx.logs[logIndex].args.condPayHash, payHash);
+          const payHash = sha3(web3.utils.bytesToHex(payIdListInfos[i].payBytesArray[0][j]));
+          const payId = calculatePayId(payHash, payResolver.address);
+          assert.equal(tx.logs[logIndex].args.payId, payId);
           assert.equal(tx.logs[logIndex].args.peerFrom, peerFroms[i]);
           assert.equal(tx.logs[logIndex].args.amount.toString(), payAmounts[i][j]);
           logIndex++;
@@ -1692,10 +1736,9 @@ contract('CelerChannel using ETH', async accounts => {
   it('should fail to intendWithdraw more funds than withdraw limit', async () => {
     // open a new channel and deposit some funds
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
-      zeroTotalDeposit: true,
-      openDeadline: 100000010,  // make initializer hash different      
+      zeroTotalDeposit: true
     });
     const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
     const tx = await instance.openChannel(openChannelRequest);
@@ -1705,7 +1748,7 @@ contract('CelerChannel using ETH', async accounts => {
     await instance.deposit(channelId, peers[1], 0, { value: 150 });
 
     try {
-      await instance.intendWithdraw(channelId, 200, 0, { from: peers[0] });
+      await instance.intendWithdraw(channelId, 200, ZERO_CHANNELID, { from: peers[0] });
     } catch (error) {
       assert.isAbove(
         error.message.search('Exceed withdraw limit'),
@@ -1715,20 +1758,22 @@ contract('CelerChannel using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
-
-    // balances = [50, 150]
   });
 
   it('should snapshotStates correctly and then intendWithdraw and confirmWithdraw correctly', async () => {
     // snapshotStates()
-    payHashListInfo = getPayHashListInfo({ payAmounts: [[1, 2]] });
+    payIdListInfo = getPayIdListInfo({
+      payAmounts: [[1, 2]],
+      payResolverAddr: payResolver.address
+    });
     signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
       channelIds: [channelId],
       seqNums: [5],
       transferAmounts: [100],
       lastPayResolveDeadlines: [9999999],
-      payHashLists: [payHashListInfo.payHashListProtos[0]],
-      peerFroms: [peers[1]]
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
+      peerFroms: [peers[1]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
     });
 
     let tx = await instance.snapshotStates(signedSimplexStateArrayBytes);
@@ -1741,7 +1786,7 @@ contract('CelerChannel using ETH', async accounts => {
     assert.equal(tx.logs[0].args.seqNums.toString(), [0, 5]);
 
     // intendWithdraw()
-    tx = await instance.intendWithdraw(channelId, 100, 0, { from: peers[0] });
+    tx = await instance.intendWithdraw(channelId, 100, ZERO_CHANNELID, { from: peers[0] });
     assert.equal(tx.logs[0].event, 'IntendWithdraw');
     assert.equal(tx.logs[0].args.channelId, channelId);
     assert.equal(tx.logs[0].args.receiver, peers[0]);
@@ -1752,25 +1797,28 @@ contract('CelerChannel using ETH', async accounts => {
     await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
 
     tx = await instance.confirmWithdraw(channelId, { from: accounts[9] });
+    const balanceAmt = await instance.getTotalBalance(channelId);
+    const balanceMap = await instance.getBalanceMap(channelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
+
     assert.equal(tx.logs[0].event, 'ConfirmWithdraw');
     assert.equal(tx.logs[0].args.channelId, channelId);
-    assert.equal(tx.logs[0].args.withdrawalAmounts.toString(), [50, 50]);
+    assert.equal(tx.logs[0].args.withdrawnAmount.toString(), 100);
     assert.equal(tx.logs[0].args.receiver, peers[0]);
-    assert.equal(tx.logs[0].args.recipientChannelId, 0);
-    assert.equal(tx.logs[0].args.balances.toString(), [0, 100]);
-
-    const owedDeposit = await instance.getOwedDepositAmount.call(channelId, peers[0]);
-    assert.equal(owedDeposit.toString(), '50');
-    const owedDepositMap = await instance.getOwedDepositMap.call(channelId);
-    assert.equal(owedDepositMap[1].toString(), [50, 0]);
-
-    // balances = [0, 100]
-    // owedDeposit = [50, 0]
+    assert.equal(tx.logs[0].args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(tx.logs[0].args.deposits.toString(), [50, 150]);
+    assert.equal(tx.logs[0].args.withdrawals.toString(), [100, 0]);
+    assert.equal(balanceAmt.toString(), 100);
+    assert.deepEqual(channelPeers, peers);
+    assert.equal(deposits.toString(), [50, 150]);
+    assert.equal(withdrawals.toString(), [100, 0]);
   });
 
   it('should fail to intendWithdraw more funds than updated withdraw limit', async () => {
     try {
-      await instance.intendWithdraw(channelId, 100, 0, { from: peers[0] });
+      await instance.intendWithdraw(channelId, 100, ZERO_CHANNELID, { from: peers[0] });
     } catch (error) {
       assert.isAbove(
         error.message.search('Exceed withdraw limit'),
@@ -1783,7 +1831,7 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should intendWithdraw correctly for funds within the updated withdraw limit', async () => {
-    tx = await instance.intendWithdraw(channelId, 50, 0, { from: peers[0] });
+    tx = await instance.intendWithdraw(channelId, 50, ZERO_CHANNELID, { from: peers[0] });
     assert.equal(tx.logs[0].event, 'IntendWithdraw');
     assert.equal(tx.logs[0].args.channelId, channelId);
     assert.equal(tx.logs[0].args.receiver, peers[0]);
@@ -1794,14 +1842,18 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should fail to intendSettle with a smaller seqNum than snapshot', async () => {
-    const payHashListInfo = getPayHashListInfo({ payAmounts: [[2, 4]] });
+    const payIdListInfo = getPayIdListInfo({
+      payAmounts: [[2, 4]],
+      payResolverAddr: payResolver.address
+    });
     const signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
       channelIds: [channelId],
       seqNums: [4],
       transferAmounts: [10],
       lastPayResolveDeadlines: [1],
-      payHashLists: [payHashListInfo.payHashListProtos[0]],
-      peerFroms: [peers[1]]
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
+      peerFroms: [peers[1]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
     });
 
     try {
@@ -1818,15 +1870,16 @@ contract('CelerChannel using ETH', async accounts => {
   });
 
   it('should intendSettle correctly with a same seqNum as snapshot', async () => {
-    // resolve the payments in head PayHashList
-    for (let i = 0; i < payHashListInfo.payBytesArray[0].length; i++) {
+    // resolve the payments in head PayIdList
+    for (let i = 0; i < payIdListInfo.payBytesArray[0].length; i++) {
       const requestBytes = getResolvePayByConditionsRequestBytes({
-        condPayBytes: payHashListInfo.payBytesArray[0][i]
+        condPayBytes: payIdListInfo.payBytesArray[0][i]
       });
-      await payRegistry.resolvePaymentByConditions(requestBytes);
+      await payResolver.resolvePaymentByConditions(requestBytes);
     }
 
-    // let resolve timeout but not pass the last pay resolve deadline
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
     let block = await web3.eth.getBlock('latest');
     await mineBlockUntil(block.number + 6, accounts[0]);
 
@@ -1842,11 +1895,12 @@ contract('CelerChannel using ETH', async accounts => {
     assert.equal(status, 2);
 
     const amounts = [1, 2];
-    for (let i = 0; i < 2; i++) {  // for each pays in head PayHashList
+    for (let i = 0; i < 2; i++) {  // for each pays in head PayIdList
       assert.equal(tx.logs[i].event, 'LiquidateOnePay');
       assert.equal(tx.logs[i].args.channelId, channelId);
-      const payHash = sha3(web3.utils.bytesToHex(payHashListInfo.payBytesArray[0][i]));
-      assert.equal(tx.logs[i].args.condPayHash, payHash);
+      const payHash = sha3(web3.utils.bytesToHex(payIdListInfo.payBytesArray[0][i]));
+      const payId = calculatePayId(payHash, payResolver.address);
+      assert.equal(tx.logs[i].args.payId, payId);
       assert.equal(tx.logs[i].args.peerFrom, peers[1]);
       assert.equal(tx.logs[i].args.amount, amounts[i]);
     }
@@ -1858,7 +1912,7 @@ contract('CelerChannel using ETH', async accounts => {
 
   it('should fail to intendWithdraw after intendSettle', async () => {
     try {
-      await instance.intendWithdraw(channelId, 50, 0, { from: peers[0] });
+      await instance.intendWithdraw(channelId, 50, ZERO_CHANNELID, { from: peers[0] });
     } catch (error) {
       assert.isAbove(
         error.message.search('Channel status error'),

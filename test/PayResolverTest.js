@@ -46,7 +46,7 @@ contract('PayRegistry', async accounts => {
     let gasUsed = await getDeployGasUsed(virtResolver);
     fs.appendFileSync(GAS_USED_LOG, 'VirtContractResolver Deploy Gas: ' + gasUsed + '\n');
     gasUsed = await getDeployGasUsed(payRegistry);
-    fs.appendFileSync(GAS_USED_LOG, 'PayRegistry Deploy Gas: ' + gasUsed + '\n\n');
+    fs.appendFileSync(GAS_USED_LOG, 'PayRegistry Deploy Gas: ' + gasUsed + '\n');
     gasUsed = await getDeployGasUsed(payResolver);
     fs.appendFileSync(GAS_USED_LOG, 'PayResolver Deploy Gas: ' + gasUsed + '\n\n');
     fs.appendFileSync(GAS_USED_LOG, '***** Function Calls Gas Used *****\n');

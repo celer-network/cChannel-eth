@@ -1,2 +1,10 @@
 ********** Gas Used in PayRegistry Tests **********
 
+***** Deploy Gas Used *****
+VirtContractResolver Deploy Gas: 320511
+PayRegistry Deploy Gas: 833045
+PayResolver Deploy Gas: 2853532
+
+***** Function Calls Gas Used *****
+resolvePaymentByConditions(): 149300
+resolvePaymentByVouchedResult(): 156011

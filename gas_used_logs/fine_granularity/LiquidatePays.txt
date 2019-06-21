@@ -1,22 +1,22 @@
 ********** Gas Measurement of liquidatePays() multi pays **********
 
 pay number per following payIdList(i.e. except head payIdList),	used gas
-1	38690
-11	127311
-21	215904
-31	304617
-41	393166
-51	482051
-61	570859
-71	659705
-81	747729
-91	836830
-101	925135
-176	1591532
-251	2258110
-326	2925176
-401	3593880
+1	38676
+11	127233
+21	215890
+31	304475
+41	393536
+51	482037
+61	570525
+71	659371
+81	748483
+91	836944
+101	925825
+176	1591134
+251	2258224
+326	2925354
+401	3593994
 
-Linear regression result: gasUsed = 8885.89 * payNumPerList + 28759.58
+Linear regression result: gasUsed = 8886.15 * payNumPerList + 28796.92
 Max pay number per following payIdList (i.e. except head payIdList) is: 897
 Coefficient of determination (R^2) is: 1

@@ -13,13 +13,22 @@ const {
   mineBlockUntil,
   getSortedArray,
   getCallGasUsed,
-  getCoSignedIntendSettle
+  getCoSignedIntendSettle,
+  calculatePayId
 } = utilities;
 
-const CelerChannel = artifacts.require('CelerChannel');
-const Resolver = artifacts.require('VirtContractResolver');
+const LedgerStruct = artifacts.require('LedgerStruct');
+const LedgerOperation = artifacts.require('LedgerOperation');
+const LedgerBalanceLimit = artifacts.require('LedgerBalanceLimit');
+const LedgerMigrate = artifacts.require('LedgerMigrate');
+const LedgerChannel = artifacts.require('LedgerChannel');
+
+const CelerWallet = artifacts.require('CelerWallet');
+const CelerLedger = artifacts.require('CelerLedger');
+const VirtResolver = artifacts.require('VirtContractResolver');
 const EthPool = artifacts.require('EthPool');
 const PayRegistry = artifacts.require('PayRegistry');
+const PayResolver = artifacts.require('PayResolver');
 
 contract('Measure CelerChannel gas usage with fine granularity', async accounts => {
   const peers = getSortedArray([accounts[0], accounts[1]]);
@@ -35,13 +44,14 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
   let ethPool;
   let channelId;
   let payRegistry;
+  let payResolver;
   let intendSettleSeqNum = 1;
 
   let protoChainInstance;
   let getOpenChannelRequest;
   let getSignedSimplexStateArrayBytes;
   let getResolvePayByConditionsRequestBytes;
-  let getPayHashListInfo;
+  let getPayIdListInfo;
 
   // data points for linear regression
   let snapshotStatesDP = [];
@@ -51,33 +61,61 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
 
   before(async () => {
     fs.writeFileSync(SNAPSHOT_STATES_LOG, '********** Gas Measurement of snapshotStates two states with multi pays **********\n\n');
-    fs.appendFileSync(SNAPSHOT_STATES_LOG, 'pay number in head payHashList,\tused gas\n');
+    fs.appendFileSync(SNAPSHOT_STATES_LOG, 'pay number in head payIdList,\tused gas\n');
 
     fs.writeFileSync(SETTLE_ONE_STATE_LOG, '********** Gas Measurement of intendSettle() one state with multi pays **********\n\n');
-    fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'pay number in head payHashList,\tused gas\n');
+    fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'pay number in head payIdList,\tused gas\n');
 
     fs.writeFileSync(LIQUIDATE_PAYS_LOG, '********** Gas Measurement of liquidatePays() multi pays **********\n\n');
-    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'pay number per following payHashList(i.e. except head payHashList),\tused gas\n');
+    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'pay number per following payIdList(i.e. except head payIdList),\tused gas\n');
 
     fs.writeFileSync(SETTLE_TWO_STATES_LOG, '********** Gas Measurement of intendSettle() two states with multi pays **********\n\n');
-    fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'pay number in head payHashList,\tused gas\n');
+    fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'pay number in head payIdList,\tused gas\n');
 
-    const resolver = await Resolver.new();
+    const virtResolver = await VirtResolver.new();
     ethPool = await EthPool.new();
-    payRegistry = await PayRegistry.new(resolver.address)
-    instance = await CelerChannel.new(ethPool.address, payRegistry.address);
+    payRegistry = await PayRegistry.new();
+    payResolver = await PayResolver.new(payRegistry.address, virtResolver.address);
+    celerWallet = await CelerWallet.new();
+
+    // deploy and link libraries
+    const ledgerStuctLib = await LedgerStruct.new();
+
+    await LedgerChannel.link("LedgerStruct", ledgerStuctLib.address);
+    const ledgerChannel = await LedgerChannel.new();
+
+    await LedgerBalanceLimit.link("LedgerStruct", ledgerStuctLib.address);
+    const ledgerBalanceLimit = await LedgerBalanceLimit.new();
+
+    await LedgerOperation.link("LedgerStruct", ledgerStuctLib.address);
+    await LedgerOperation.link("LedgerChannel", ledgerChannel.address);
+    const ledgerOperation = await LedgerOperation.new();
+
+    await LedgerMigrate.link("LedgerStruct", ledgerStuctLib.address);
+    await LedgerMigrate.link("LedgerOperation", ledgerOperation.address);
+    await LedgerMigrate.link("LedgerChannel", ledgerChannel.address);
+    const ledgerMigrate = await LedgerMigrate.new();
+
+    await CelerLedger.link("LedgerStruct", ledgerStuctLib.address);
+    await CelerLedger.link("LedgerOperation", ledgerOperation.address);
+    await CelerLedger.link("LedgerBalanceLimit", ledgerBalanceLimit.address);
+    await CelerLedger.link("LedgerMigrate", ledgerMigrate.address);
+    await CelerLedger.link("LedgerChannel", ledgerChannel.address);
+    instance = await CelerLedger.new(
+      ethPool.address,
+      payRegistry.address,
+      celerWallet.address
+    );
 
     protoChainInstance = await protoChainFactory(peers, clients);
     getOpenChannelRequest = protoChainInstance.getOpenChannelRequest;
-    getCooperativeWithdrawRequestBytes = protoChainInstance.getCooperativeWithdrawRequestBytes;
     getSignedSimplexStateArrayBytes = protoChainInstance.getSignedSimplexStateArrayBytes;
-    getCooperativeSettleRequestBytes = protoChainInstance.getCooperativeSettleRequestBytes;
     getResolvePayByConditionsRequestBytes = protoChainInstance.getResolvePayByConditionsRequestBytes;
-    getPayHashListInfo = protoChainInstance.getPayHashListInfo;
+    getPayIdListInfo = protoChainInstance.getPayIdListInfo;
 
     // open a new channel
     const request = await getOpenChannelRequest({
-      celerChannelAddress: instance.address,
+      CelerLedgerAddress: instance.address,
       openDeadline: 100000000,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true
@@ -101,7 +139,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     let yIntercept = regressionResult.equation[1];
     let maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
     fs.appendFileSync(SNAPSHOT_STATES_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumInHeadList + ' + yIntercept.toString() + '\n');
-    fs.appendFileSync(SNAPSHOT_STATES_LOG, 'Max pay number in head payHashList is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(SNAPSHOT_STATES_LOG, 'Max pay number in head payIdList is: ' + maxPayNumPerList.toString() + '\n');
     fs.appendFileSync(SNAPSHOT_STATES_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
 
     regressionResult = regression.linear(settleOneStateDP);
@@ -109,7 +147,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     yIntercept = regressionResult.equation[1];
     maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
     fs.appendFileSync(SETTLE_ONE_STATE_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumInHeadList + ' + yIntercept.toString() + '\n');
-    fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'Max pay number in head payHashList is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'Max pay number in head payIdList is: ' + maxPayNumPerList.toString() + '\n');
     fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
 
     regressionResult = regression.linear(liquidatePaysDP);
@@ -117,7 +155,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     yIntercept = regressionResult.equation[1];
     maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
     fs.appendFileSync(LIQUIDATE_PAYS_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumPerList + ' + yIntercept.toString() + '\n');
-    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'Max pay number per following payHashList (i.e. except head payHashList) is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'Max pay number per following payIdList (i.e. except head payIdList) is: ' + maxPayNumPerList.toString() + '\n');
     fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
 
     regressionResult = regression.linear(settleTwoStatesDP);
@@ -125,7 +163,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     yIntercept = regressionResult.equation[1];
     maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
     fs.appendFileSync(SETTLE_TWO_STATES_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumInHeadList + ' + yIntercept.toString() + '\n');
-    fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'Max pay number in head payHashList is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'Max pay number in head payIdList is: ' + maxPayNumPerList.toString() + '\n');
     fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
   });
 
@@ -136,13 +174,14 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     it('measure snapshotStates two states with ' + payNumPerList.toString() + ' pays per state', async () => {
       const payListAmts = Array.apply(null, Array(payNumPerList)).map(function (x, i) { return payAmt; });
       result = await getCoSignedIntendSettle(
-        getPayHashListInfo,
+        getPayIdListInfo,
         getSignedSimplexStateArrayBytes,
         [channelId, channelId],
         [[payListAmts, [1, 2]], [payListAmts, [1, 2]]],  // only use head lists
         [intendSettleSeqNum, intendSettleSeqNum],
         [999999999, 999999999],  // lastPayResolveDeadlines
-        [10, 10]  // transferAmounts
+        [10, 10],  // transferAmounts
+        payResolver.address  // payResolverAddr
       );
 
       let tx = await instance.snapshotStates(result.signedSimplexStateArrayBytes);
@@ -166,26 +205,28 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       const peerIndex = 0;  // only one state associated with peer 0
       const payListAmts = Array.apply(null, Array(payNumPerList)).map(function (x, i) { return payAmt; });
       result = await getCoSignedIntendSettle(
-        getPayHashListInfo,
+        getPayIdListInfo,
         getSignedSimplexStateArrayBytes,
         [channelId],
         [[payListAmts, payListAmts]],
         [intendSettleSeqNum],
         [999999999],  // lastPayResolveDeadlines
-        [10]  // transferAmounts
+        [10],  // transferAmounts
+        payResolver.address  // payResolverAddr
       );
 
       const signedSimplexStateArrayBytes = result.signedSimplexStateArrayBytes;
 
-      // resolve the payments in head PayHashList
+      // resolve the payments in head PayIdList
       for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {
         const requestBytes = getResolvePayByConditionsRequestBytes({
           condPayBytes: result.condPays[peerIndex][0][payIndex]
         });
-        await payRegistry.resolvePaymentByConditions(requestBytes);
+        await payResolver.resolvePaymentByConditions(requestBytes);
       }
 
-      // let resolve timeout but not pass the last pay resolve deadline
+      // pass onchain resolve deadline of all onchain resolved pays
+      // but not pass the last pay resolve deadline
       let block;
       block = await web3.eth.getBlock('latest');
       await mineBlockUntil(block.number + 6, accounts[0]);
@@ -204,12 +245,12 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       const status = await instance.getChannelStatus(channelId);
       assert.equal(status, 2);
 
-      let payHash;
-      for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {  // for each pays in head PayHashList
+      for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {  // for each pays in head PayIdList
         assert.equal(tx.logs[payIndex].event, 'LiquidateOnePay');
         assert.equal(tx.logs[payIndex].args.channelId, channelId);
-        payHash = sha3(web3.utils.bytesToHex(result.condPays[peerIndex][0][payIndex]));
-        assert.equal(tx.logs[payIndex].args.condPayHash, payHash);
+        const payHash = sha3(web3.utils.bytesToHex(result.condPays[peerIndex][0][payIndex]));
+        const payId = calculatePayId(payHash, payResolver.address);
+        assert.equal(tx.logs[payIndex].args.payId, payId);
         assert.equal(tx.logs[payIndex].args.peerFrom, peers[peerIndex]);
         assert.equal(tx.logs[payIndex].args.amount.toString(), payListAmts[payIndex]);
       }
@@ -221,18 +262,19 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
 
     it('measure liquidatePays with ' + payNumPerList.toString() + ' pays', async () => {
       const peerIndex = 0;  // only one state associated with peer 0
-      const listIndex = 1;  // only liquidate the next payHashList of head payHashList
+      const listIndex = 1;  // only liquidate the next payIdList of head payIdList
 
       // resolve all remaining payments
       for (payIndex = 0; payIndex < result.condPays[peerIndex][listIndex].length; payIndex++) {
         const requestBytes = getResolvePayByConditionsRequestBytes({
           condPayBytes: result.condPays[peerIndex][listIndex][payIndex]
         });
-        await payRegistry.resolvePaymentByConditions(requestBytes);
+        await payResolver.resolvePaymentByConditions(requestBytes);
       }
 
 
-      // let resolve timeout but not pass the last pay resolve deadline
+      // pass onchain resolve deadline of all onchain resolved pays
+      // but not pass the last pay resolve deadline
       let block;
       block = await web3.eth.getBlock('latest');
       await mineBlockUntil(block.number + 6, accounts[0]);
@@ -241,7 +283,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       let tx = await instance.liquidatePays(
         channelId,
         peers[peerIndex],
-        result.payHashListBytesArrays[peerIndex][1]
+        result.payIdListBytesArrays[peerIndex][1]
       );
 
       for (payIndex = 0; payIndex < result.condPays[peerIndex][listIndex].length; payIndex++) {
@@ -250,7 +292,8 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
         payHash = sha3(web3.utils.bytesToHex(
           result.condPays[peerIndex][listIndex][payIndex]
         ));
-        assert.equal(tx.logs[payIndex].args.condPayHash, payHash);
+        const payId = calculatePayId(payHash, payResolver.address);
+        assert.equal(tx.logs[payIndex].args.payId, payId);
         assert.equal(tx.logs[payIndex].args.peerFrom, peers[peerIndex]);
         assert.equal(tx.logs[payIndex].args.amount, payAmt);
       }
@@ -268,28 +311,30 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     it('measure intendSettle two states with ' + payNumPerList.toString() + ' pays per state', async () => {
       const payListAmts = Array.apply(null, Array(payNumPerList)).map(function (x, i) { return payAmt; });
       result = await getCoSignedIntendSettle(
-        getPayHashListInfo,
+        getPayIdListInfo,
         getSignedSimplexStateArrayBytes,
         [channelId, channelId],
         [[payListAmts, [1, 2]], [payListAmts, [1, 2]]],  // only use head lists
         [intendSettleSeqNum, intendSettleSeqNum],
         [999999999, 999999999],  // lastPayResolveDeadlines
-        [10, 10]  // transferAmounts
+        [10, 10],  // transferAmounts
+        payResolver.address  // payResolverAddr
       );
 
       const signedSimplexStateArrayBytes = result.signedSimplexStateArrayBytes;
 
-      // resolve the payments in head PayHashList
+      // resolve the payments in head PayIdList
       for (let peerIndex = 0; peerIndex < 2; peerIndex++) {
         for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {
           const requestBytes = getResolvePayByConditionsRequestBytes({
             condPayBytes: result.condPays[peerIndex][0][payIndex]
           });
-          await payRegistry.resolvePaymentByConditions(requestBytes);
+          await payResolver.resolvePaymentByConditions(requestBytes);
         }
       }
 
-      // let resolve timeout but not pass the last pay resolve deadline
+      // pass onchain resolve deadline of all onchain resolved pays
+      // but not pass the last pay resolve deadline
       let block;
       block = await web3.eth.getBlock('latest');
       await mineBlockUntil(block.number + 6, accounts[0]);
@@ -308,14 +353,14 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       const status = await instance.getChannelStatus(channelId);
       assert.equal(status, 2);
 
-      let payHash;
       let logIndex = 0;
       for (let peerIndex = 0; peerIndex < 2; peerIndex++) {
-        for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {  // for each pays in head PayHashList
+        for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {  // for each pays in head PayIdList
           assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
           assert.equal(tx.logs[logIndex].args.channelId, channelId);
-          payHash = sha3(web3.utils.bytesToHex(result.condPays[peerIndex][0][payIndex]));
-          assert.equal(tx.logs[logIndex].args.condPayHash, payHash);
+          const payHash = sha3(web3.utils.bytesToHex(result.condPays[peerIndex][0][payIndex]));
+          const payId = calculatePayId(payHash, payResolver.address);
+          assert.equal(tx.logs[logIndex].args.payId, payId);
           assert.equal(tx.logs[logIndex].args.peerFrom, peers[peerIndex]);
           assert.equal(tx.logs[logIndex].args.amount.toString(), payListAmts[payIndex]);
           logIndex++;
@@ -330,11 +375,11 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
 
   // small measurement range
   const stepSmall = 10;
-  const numSmall = 3;  // recommend 10 for finer granularity measurement
+  const numSmall = 3;  // use 10 for fine granularity measurement
   const startSmall = 1;
   // large measurement range
   const stepLarge = 75;
-  const numLarge = 2;  // recommend 5 for finer granularity measurement
+  const numLarge = 0;  // use 5 for fine granularity measurement
   const startLarge = stepSmall * numSmall + startSmall;
 
   // Operable channel status

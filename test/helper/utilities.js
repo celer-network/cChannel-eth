@@ -17,37 +17,44 @@ async function mineBlockUntil(deadline, sendAccount) {
 
 // get one or two co-signed states for intendSettle()
 async function getCoSignedIntendSettle(
-  getPayHashListInfo,
+  getPayIdListInfo,
   getSignedSimplexStateArrayBytes,
   channelIds,
   payAmountsArray,
   seqNums,
   lastPayResolveDeadlines,
-  transferAmounts
+  transferAmounts,
+  payResolverAddr
 ) {
-  let headPayHashLists = [];
+  let headPayIdLists = [];
   let condPays = [];
-  let payHashListBytesArrays = [];
+  let payIdListBytesArrays = [];
+  let totalPendingAmounts = [];
   for (i = 0; i < channelIds.length; i++) {
-    const payHashListInfo = getPayHashListInfo({ payAmounts: payAmountsArray[i] });
-    headPayHashLists[i] = payHashListInfo.payHashListProtos[0];
-    condPays[i] = payHashListInfo.payBytesArray;
-    payHashListBytesArrays[i] = payHashListInfo.payHashListBytesArray;
+    const payIdListInfo = getPayIdListInfo({
+      payAmounts: payAmountsArray[i],
+      payResolverAddr: payResolverAddr
+    });
+    headPayIdLists[i] = payIdListInfo.payIdListProtos[0];
+    condPays[i] = payIdListInfo.payBytesArray;
+    payIdListBytesArrays[i] = payIdListInfo.payIdListBytesArray;
+    totalPendingAmounts[i] = payIdListInfo.totalPendingAmount;
   }
 
   const signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
     channelIds: channelIds,
     seqNums: seqNums,
     lastPayResolveDeadlines: lastPayResolveDeadlines,
-    payHashLists: headPayHashLists,
-    transferAmounts: transferAmounts
+    payIdLists: headPayIdLists,
+    transferAmounts: transferAmounts,
+    totalPendingAmounts: totalPendingAmounts
   });
 
   return {
     signedSimplexStateArrayBytes: signedSimplexStateArrayBytes,
     lastPayResolveDeadlines: lastPayResolveDeadlines,
     condPays: condPays,
-    payHashListBytesArrays: payHashListBytesArrays
+    payIdListBytesArrays: payIdListBytesArrays
   };
 }
 
@@ -59,10 +66,17 @@ function getSortedArray(peers) {
   }
 }
 
+function calculatePayId(payHashHex, setterAddr) {
+  const payHashBytes = web3.utils.hexToBytes(payHashHex);
+  const setterAddrBytes = web3.utils.hexToBytes(setterAddr);
+  return web3.utils.keccak256(payHashBytes.concat(setterAddrBytes));
+}
+
 module.exports = {
   getDeployGasUsed: getDeployGasUsed,
   getCallGasUsed: getCallGasUsed,
   mineBlockUntil: mineBlockUntil,
   getSortedArray: getSortedArray,
-  getCoSignedIntendSettle: getCoSignedIntendSettle
+  getCoSignedIntendSettle: getCoSignedIntendSettle,
+  calculatePayId: calculatePayId
 }

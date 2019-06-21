@@ -1,6 +1,7 @@
 pragma solidity ^0.5.0;
 
-import "./lib/IEthPool.sol";
+import "./lib/interface/IEthPool.sol";
+import "./lib/interface/ICelerWallet.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
 /**
@@ -22,13 +23,13 @@ contract EthPool is IEthPool {
 
     /**
      * @notice Deposit ETH to ETH Pool
-     * @param _recipient the address ETH is deposited to 
+     * @param _receiver the address ETH is deposited to 
      */
-    function deposit(address _recipient) public payable {
-        require(_recipient != address(0), "Recipient address is 0");
+    function deposit(address _receiver) public payable {
+        require(_receiver != address(0), "Receiver address is 0");
 
-        balances[_recipient] = balances[_recipient].add(msg.value);
-        emit Deposit(_recipient, msg.value);
+        balances[_receiver] = balances[_receiver].add(msg.value);
+        emit Deposit(_receiver, msg.value);
     }
 
     /**
@@ -59,13 +60,36 @@ contract EthPool is IEthPool {
     /**
      * @notice Transfer ETH from one address to another.
      * @dev Note that while this function emits an Approval event, this is not required as per the specification.
-     * @param _from address The address which you want to send ETH from
-     * @param _to address The address which you want to transfer to
-     * @param _value uint the amount of ETH to be transferred
+     * @param _from The address which you want to transfer ETH from
+     * @param _to The address which you want to transfer to
+     * @param _value the amount of ETH to be transferred
      */
     function transferFrom(address _from, address payable _to, uint _value) public returns (bool) {
         allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_value);
         _transfer(_from, _to, _value);
+        emit Approval(_from, msg.sender, allowed[_from][msg.sender]);
+        return true;
+    }
+
+    /**
+     * @notice Transfer ETH from one address to a wallet in CelerWallet contract.
+     * @param _from The address which you want to transfer ETH from
+     * @param _walletAddr CelerWallet address which should have a depositETH(bytes32) payable API
+     * @param _walletId id of the wallet you want to deposit ETH into
+     * @param _value the amount of ETH to be transferred
+     */
+    function transferToCelerWallet(
+        address _from,
+        address _walletAddr,
+        bytes32 _walletId,
+        uint _value
+    )
+        external
+        returns (bool)
+    {
+        allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_value);
+        ICelerWallet wallet = ICelerWallet(_walletAddr);
+        wallet.depositETH.value(_value)(_walletId);
         emit Approval(_from, msg.sender, allowed[_from][msg.sender]);
         return true;
     }

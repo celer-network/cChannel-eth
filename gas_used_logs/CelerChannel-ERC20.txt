@@ -1,21 +1,22 @@
-********** Gas Used in CelerChannel-ERC20 Tests **********
+********** Gas Used in ChannelLedger-ERC20 Tests **********
 
 ***** Deploy Gas Used *****
-VirtContractResolver Deploy Gas: 323727
-PayRegistry Deploy Gas: 2901123
-CelerChannel Deploy Gas: 6555987
+VirtContractResolver Deploy Gas: 320511
+PayRegistry Deploy Gas: 2896847
+ChannelWallet Deploy Gas: 1284072
+ChannelLedger Deploy Gas: 2323424
 
 ***** Function Calls Gas Used *****
-openChannel() with zero deposit: 197104
-setDepositLimits(): 45168
-deposit(): 75322
-disableDepositLimits(): 13557
-intendWithdraw(): 182168
-confirmWithdraw(): 41295
-cooperativeWithdraw(): 110225
-intendSettle() with two 2-payment-hashList states: 378231
-liquidatePays() with 2 payments: 43378
-confirmSettle(): 70336
-openChannel() with non-zero ERC20 deposits: 253947
-cooperativeWithdraw(): 123824
-cooperativeSettle(): 119309
+openChannel() with zero deposit: 308592
+setBalanceLimits(): 47506
+deposit(): 112127
+disableBalanceLimits(): 14474
+intendWithdraw(): 278592
+confirmWithdraw(): 82544
+cooperativeWithdraw(): 141363
+intendSettle() with two 2-payment-hashList states: 409856
+liquidatePays() with 2 payments: 47868
+confirmSettle(): 94784
+openChannel() with non-zero ERC20 deposits: 389387
+cooperativeWithdraw(): 146668
+cooperativeSettle(): 144151

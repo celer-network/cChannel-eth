@@ -1,13 +1,13 @@
 pragma solidity ^0.5.0;
 
-import "../lib/IBooleanCond.sol";
+import "../lib/interface/IBooleanCond.sol";
 
 contract BooleanCondMock is IBooleanCond {
     function isFinalized(bytes calldata _query) view external returns (bool) {
         return true;
     }
 
-    function getResult(bytes calldata _query) view external returns (bool) {
+    function getOutcome(bytes calldata _query) view external returns (bool) {
         return _bytesToBool(_query);
     }
 

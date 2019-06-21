@@ -1,22 +1,22 @@
 ********** Gas Measurement of snapshotStates two states with multi pays **********
 
-pay number in head payHashList,	used gas
-1	226156
-11	268984
-21	369817
-31	471818
-41	573591
-51	675176
-61	776586
-71	878611
-81	980400
-91	1081526
-101	1183301
-176	1953357
-251	2727051
-326	3505347
-401	4289542
+pay number in head payIdList,	used gas
+1	231463
+11	273196
+21	374672
+31	476476
+41	577659
+51	679573
+61	781129
+71	883240
+81	985185
+91	1088016
+101	1189532
+176	1959876
+251	2733962
+326	3514967
+401	4300874
 
-Linear regression result: gasUsed = 10262.41 * payNumInHeadList + 157415.32
-Max pay number in head payHashList is: 764
+Linear regression result: gasUsed = 10278.74 * payNumInHeadList + 161452.06
+Max pay number in head payIdList is: 762
 Coefficient of determination (R^2) is: 1

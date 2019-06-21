@@ -17,7 +17,7 @@ contract('EthPool', async accounts => {
 
   before(async () => {
     fs.writeFileSync(GAS_USED_LOG, '********** Gas Used in EthPool Tests **********\n\n');
-    
+
     instance = await EthPool.new();
     fs.appendFileSync(GAS_USED_LOG, '***** Deploy Gas Used *****\n');
     let gasUsed = await getDeployGasUsed(instance);
@@ -26,7 +26,7 @@ contract('EthPool', async accounts => {
   });
 
   it('should deposit correctly', async () => {
-    const tx = await instance.deposit(accounts[1], {value: 100});
+    const tx = await instance.deposit(accounts[1], { value: 100 });
     const { event, args } = tx.logs[0];
 
     fs.appendFileSync(
@@ -35,13 +35,13 @@ contract('EthPool', async accounts => {
     );
 
     assert.equal(event, 'Deposit');
-    assert.equal(args.recipient, accounts[1]);
+    assert.equal(args.receiver, accounts[1]);
     assert.equal(args.value.toString(), '100');
   });
 
   it('should fail to withdraw because of no deposit', async () => {
     try {
-      await instance.withdraw(100, {from: accounts[0]});
+      await instance.withdraw(100, { from: accounts[0] });
     } catch (error) {
       return;
     }
@@ -50,7 +50,7 @@ contract('EthPool', async accounts => {
   });
 
   it('should withdraw correctly', async () => {
-    const tx = await instance.withdraw(100, {from: accounts[1]});
+    const tx = await instance.withdraw(100, { from: accounts[1] });
     const { event, args } = tx.logs[0];
 
     fs.appendFileSync(
@@ -65,7 +65,7 @@ contract('EthPool', async accounts => {
   });
 
   it('should approve correctly', async () => {
-    const tx = await instance.approve(accounts[1], 200, {from: accounts[0]});
+    const tx = await instance.approve(accounts[1], 200, { from: accounts[0] });
     const { event, args } = tx.logs[0];
 
     fs.appendFileSync(
@@ -82,7 +82,7 @@ contract('EthPool', async accounts => {
   it('should transferFrom correctly', async () => {
     const toAddress = "0x0000000000000000000000000000000123456789";
     // deposit first
-    await instance.deposit(accounts[0], {value: 200});
+    await instance.deposit(accounts[0], { value: 200 });
 
     const tx = await instance.transferFrom(
       accounts[0],  // owner
@@ -107,7 +107,7 @@ contract('EthPool', async accounts => {
     assert.equal(tx.logs[1].args.owner, accounts[0]);
     assert.equal(tx.logs[1].args.spender, accounts[1]);
     assert.equal(tx.logs[1].args.value.toString(), '50');
-    
+
     balance = await web3.eth.getBalance(toAddress);
     assert.equal(balance.toString(), '150');
   });
@@ -130,7 +130,7 @@ contract('EthPool', async accounts => {
   });
 
   it('should increaseAllowance correctly', async () => {
-    const tx = await instance.increaseAllowance(accounts[1], 50, {from: accounts[0]});
+    const tx = await instance.increaseAllowance(accounts[1], 50, { from: accounts[0] });
     const { event, args } = tx.logs[0];
 
     fs.appendFileSync(
@@ -145,7 +145,7 @@ contract('EthPool', async accounts => {
   });
 
   it('should decreaseAllowance correctly', async () => {
-    const tx = await instance.decreaseAllowance(accounts[1], 80, {from: accounts[0]});
+    const tx = await instance.decreaseAllowance(accounts[1], 80, { from: accounts[0] });
     const { event, args } = tx.logs[0];
 
     fs.appendFileSync(

@@ -170,4 +170,32 @@ library PbChain {
         }
     } // end decoder SignedSimplexStateArray
 
+    struct ChannelMigrationRequest {
+        bytes channelMigrationInfo;   // tag: 1
+        bytes[] sigs;   // tag: 2
+    } // end struct ChannelMigrationRequest
+
+    function decChannelMigrationRequest(bytes memory raw) internal pure returns (ChannelMigrationRequest memory m) {
+        Pb.Buffer memory buf = Pb.fromBytes(raw);
+
+        uint[] memory cnts = buf.cntTags(2);
+        m.sigs = new bytes[](cnts[2]);
+        cnts[2] = 0;  // reset counter for later use
+        
+        uint tag;
+        Pb.WireType wire;
+        while (buf.hasMore()) {
+            (tag, wire) = buf.decKey();
+            if (false) {} // solidity has no switch/case
+            else if (tag == 1) {
+                m.channelMigrationInfo = bytes(buf.decBytes());
+            }
+            else if (tag == 2) {
+                m.sigs[cnts[2]] = bytes(buf.decBytes());
+                cnts[2]++;
+            }
+            else { buf.skipValue(wire); } // skip value of unknown tag
+        }
+    } // end decoder ChannelMigrationRequest
+
 }

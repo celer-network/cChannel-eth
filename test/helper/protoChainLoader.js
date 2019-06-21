@@ -25,7 +25,7 @@ module.exports = async () => {
   const VouchedCondPayResult = entity.lookupType("entity.VouchedCondPayResult");
   const Condition = entity.lookupType("entity.Condition");
   const CooperativeSettleInfo = entity.lookupType("entity.CooperativeSettleInfo");
-  const PayHashList = entity.lookupType("entity.PayHashList");
+  const PayIdList = entity.lookupType("entity.PayIdList");
 
   return {
     // chain
@@ -50,6 +50,6 @@ module.exports = async () => {
     VouchedCondPayResult,
     Condition,
     CooperativeSettleInfo,
-    PayHashList
+    PayIdList
   }
 }

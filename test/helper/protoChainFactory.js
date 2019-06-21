@@ -5,6 +5,9 @@ const sha3 = web3.utils.keccak256;
 const protoChainLoader = require('./protoChainLoader');
 const { signMessage } = require('./sign');
 
+const utilities = require('./utilities');
+const { calculatePayId } = utilities;
+
 const BooleanCondMock = artifacts.require('BooleanCondMock');
 const NumericCondMock = artifacts.require('NumericCondMock');
 
@@ -41,7 +44,7 @@ module.exports = async (peers, clients) => {
     CooperativeSettleInfo,
     CooperativeSettleRequest,
     ResolvePayByConditionsRequest,
-    PayHashList
+    PayIdList
   } = protoChain;
 
   /********** constant vars **********/
@@ -51,13 +54,13 @@ module.exports = async (peers, clients) => {
   const conditionDeployedFalse = {
     conditionType: 1,
     deployedContractAddress: web3.utils.hexToBytes(booleanCondMock.address),
-    argsQueryResult: [0]
+    argsQueryOutcome: [0]
   };
 
   const conditionDeployedTrue = {
     conditionType: 1,
     deployedContractAddress: web3.utils.hexToBytes(booleanCondMock.address),
-    argsQueryResult: [1]
+    argsQueryOutcome: [1]
   };
 
   const getConditionDeployedNumeric = (amount) => {
@@ -65,7 +68,7 @@ module.exports = async (peers, clients) => {
     return {
       conditionType: 1,
       deployedContractAddress: web3.utils.hexToBytes(numericCondMock.address),
-      argsQueryResult: [amount]
+      argsQueryOutcome: [amount]
     }
   }
 
@@ -77,55 +80,63 @@ module.exports = async (peers, clients) => {
   // TODO: add VIRTUAL_CONTRACT conditions and tests
 
   /********** external API **********/
-  // get the list of PayHashList bytes and the list of PayBytes array in a simplex state
-  const getPayHashListInfo = ({
-    payAmounts  // from head to tail
+  // get the list of PayIdList bytes and the list of PayBytes array in a simplex state
+  const getPayIdListInfo = ({
+    payAmounts,  // an array of pay amount list of linked pay id list; from head to tail
+    payResolverAddr
   }) => {
-    // 1-d array of PayHashList proto
-    let payHashListProtos = [];
-    // 1-d array of PayHashList bytes, for liquidating pays with CelerChannel
-    let payHashListBytesArray = [];
-    // 2-d array of pay bytes in list of PayHashList of a simplex channel, 
+    // 1-d array of PayIdList proto
+    let payIdListProtos = [];
+    // 1-d array of PayIdList bytes, for liquidating pays in CelerLedger
+    let payIdListBytesArray = [];
+    // 2-d array of pay bytes in list of PayIdList of a simplex channel, 
     // for resolving pays with PayRegistry.
     // Index is consistent with payAmounts.
     let payBytesArray = [];
+    // total pending amount in payAmounts/this state
+    let totalPendingAmount = 0;
 
     for (let i = 0; i < payAmounts.length; i++) {
       payBytesArray[i] = []
     }
 
     for (let i = payAmounts.length - 1; i >= 0; i--) {
-      let payHashes = [];
+      let payIds = [];
       for (j = 0; j < payAmounts[i].length; j++) {
+        totalPendingAmount += payAmounts[i][j];
         payBytesArray[i][j] = getConditionalPayBytes({
           payTimestamp: Math.floor(Math.random() * 10000000000),
           paySrc: clients[i],
           payDest: clients[1 - i],
           conditions: [Condition.create(conditionDeployedTrue)],
-          maxAmount: payAmounts[i][j]
+          maxAmount: payAmounts[i][j],
+          payResolver: payResolverAddr
         });
-        payHashes[j] = web3.utils.hexToBytes(sha3(payBytesArray[i][j]));
+        payIds[j] = web3.utils.hexToBytes(
+          calculatePayId(sha3(payBytesArray[i][j]), payResolverAddr)
+        );
       }
 
-      // assemble PayHashList
-      let payHashList;
+      // assemble PayIdList
+      let payIdList;
       if (i == payAmounts.length - 1) {
-        payHashList = { payHashes: payHashes };
+        payIdList = { payIds: payIds };
       } else {
-        payHashList = {
-          payHashes: payHashes,
-          nextListHash: web3.utils.hexToBytes(sha3(payHashListBytesArray[i + 1]))
+        payIdList = {
+          payIds: payIds,
+          nextListHash: web3.utils.hexToBytes(sha3(payIdListBytesArray[i + 1]))
         }
       }
-      payHashListProtos[i] = PayHashList.create(payHashList);
-      payHashListBytesArray[i] = PayHashList.encode(payHashListProtos[i])
+      payIdListProtos[i] = PayIdList.create(payIdList);
+      payIdListBytesArray[i] = PayIdList.encode(payIdListProtos[i])
         .finish()
         .toJSON().data;
     }
     return {
-      payHashListProtos: payHashListProtos,
+      payIdListProtos: payIdListProtos,
       payBytesArray: payBytesArray,
-      payHashListBytesArray: payHashListBytesArray,
+      payIdListBytesArray: payIdListBytesArray,
+      totalPendingAmount: totalPendingAmount
     }
   }
 
@@ -208,15 +219,15 @@ module.exports = async (peers, clients) => {
   }
 
   // get bytes of OpenChannelRequest
+  // TODO: is it necessary to calculate channelId/walletId here for tests?
   const getOpenChannelRequest = async ({
-    celerChannelAddress,
     openDeadline = 999999,
     disputeTimeout = 10,
     tokenAddress = null,
     tokenType = 1,
     zeroTotalDeposit = false,
     channelPeers = peers,
-    msgValueRecipient = 0
+    msgValueReceiver = 0
   }) => {
     let paymentChannelInitializerBytes;
     if (tokenType == 1) {  // ETH
@@ -226,7 +237,7 @@ module.exports = async (peers, clients) => {
         tokenType: tokenType,
         zeroTotalDeposit: zeroTotalDeposit,
         channelPeers: channelPeers,
-        msgValueRecipient: msgValueRecipient
+        msgValueReceiver: msgValueReceiver
       });
     } else if (tokenType == 2) {  // ERC20
       paymentChannelInitializerBytes = getPaymentChannelInitializerBytes({
@@ -236,51 +247,38 @@ module.exports = async (peers, clients) => {
         tokenType: tokenType,
         zeroTotalDeposit: zeroTotalDeposit,
         channelPeers: channelPeers,
-        msgValueRecipient: msgValueRecipient
+        msgValueReceiver: msgValueReceiver
       });
     }
 
-    // calculate channelId
-    const hash = sha3(
-      paymentChannelInitializerBytes.concat(web3.utils.hexToBytes(celerChannelAddress))
-    );
-    const channelId = parseInt(hash.substring(hash.length - 16), 16);
+    const sigs = await getAllSignatures({
+      messageBytes: paymentChannelInitializerBytes,
+      signPeers: channelPeers
+    });
 
-    let openChannelRequest;
-    if (zeroTotalDeposit) {
-      openChannelRequest = {
-        channelInitializer: paymentChannelInitializerBytes,
-      }
-    } else {
-      const sigs = await getAllSignatures({
-        messageBytes: paymentChannelInitializerBytes,
-        signPeers: channelPeers
-      });
-
-      openChannelRequest = {
-        channelInitializer: paymentChannelInitializerBytes,
-        sigs: sigs
-      }
+    let openChannelRequest = {
+      channelInitializer: paymentChannelInitializerBytes,
+      sigs: sigs
     }
+
     const openChannelRequestProto = OpenChannelRequest.create(openChannelRequest);
     const openChannelRequestBytes = OpenChannelRequest.encode(openChannelRequestProto)
       .finish()
       .toJSON().data;
 
     return {
-      openChannelRequestBytes: openChannelRequestBytes,
-      channelId: channelId
+      openChannelRequestBytes: openChannelRequestBytes
     }
   }
 
   // get bytes of CooperativeWithdrawRequest
   const getCooperativeWithdrawRequestBytes = async ({
-    channelId = 1,
+    channelId,
     seqNum = 1,
     amount = 5,
     receiverAccount = peers[0],
     withdrawDeadline = 9999999,
-    recipientChannelId = 0
+    recipientChannelId = "0x0000000000000000000000000000000000000000000000000000000000000000"
   }) => {
     const withdraw = {
       account: web3.utils.hexToBytes(receiverAccount),
@@ -289,11 +287,11 @@ module.exports = async (peers, clients) => {
     const withdrawProto = AccountAmtPair.create(withdraw);
 
     const withdrawInfo = {
-      channelId: channelId,
+      channelId: web3.utils.hexToBytes(channelId),
       seqNum: seqNum,
       withdraw: withdrawProto,
       withdrawDeadline: withdrawDeadline,
-      recipientChannelId: recipientChannelId
+      recipientChannelId: web3.utils.hexToBytes(recipientChannelId)
     };
     const withdrawInfoProto = CooperativeWithdrawInfo.create(withdrawInfo);
     const withdrawInfoBytes = CooperativeWithdrawInfo.encode(withdrawInfoProto)
@@ -320,10 +318,11 @@ module.exports = async (peers, clients) => {
     // for cosigned non-null state
     transferAmounts = null,
     lastPayResolveDeadlines = null,
-    payHashLists = null,
+    payIdLists = null,
     peerFroms = peers,
     // for single-signed null state
-    signers = null
+    signers = null,
+    totalPendingAmounts = [0, 0]
   }) => {
     let signedSimplexStateProtos = [];
     for (let i = 0; i < channelIds.length; i++) {
@@ -333,8 +332,9 @@ module.exports = async (peers, clients) => {
           peerFrom: peerFroms[i],
           seqNum: seqNums[i],
           transferAmount: transferAmounts[i],
-          pendingPayHashes: payHashLists[i],
-          lastPayResolveDeadline: lastPayResolveDeadlines[i]
+          pendingPayIds: payIdLists[i],
+          lastPayResolveDeadline: lastPayResolveDeadlines[i],
+          totalPendingAmount: totalPendingAmounts[i]
         });
       } else if (seqNums[i] == 0) {  // single-signed null state
         signedSimplexStateProtos[i] = await getSingleSignedSimplexStateProto({
@@ -364,7 +364,7 @@ module.exports = async (peers, clients) => {
     });
 
     const cooperativeSettleInfo = {
-      channelId: channelId,
+      channelId: web3.utils.hexToBytes(channelId),
       seqNum: seqNum,
       settleBalance: settleBalance,
       settleDeadline: settleDeadline
@@ -410,7 +410,7 @@ module.exports = async (peers, clients) => {
     tokenType,
     zeroTotalDeposit,
     channelPeers,
-    msgValueRecipient
+    msgValueReceiver
   }) => {
     let token;
     if (tokenType == 1) {  // ETH
@@ -444,7 +444,7 @@ module.exports = async (peers, clients) => {
       initDistribution: initDistributionProto,
       openDeadline: openDeadline,
       disputeTimeout: disputeTimeout,
-      msgValueRecipient: msgValueRecipient
+      msgValueReceiver: msgValueReceiver
     }
     const paymentChannelInitializerProto = PaymentChannelInitializer.create(
       paymentChannelInitializer
@@ -546,20 +546,22 @@ module.exports = async (peers, clients) => {
     peerFrom,
     seqNum,
     transferAmount,
-    pendingPayHashes,
-    lastPayResolveDeadline
+    pendingPayIds,
+    lastPayResolveDeadline,
+    totalPendingAmount
   }) => {
     const transferToPeerProto = getTokenTransferProto({
       amount: transferAmount
     });
 
     const simplexPaymentChannel = {
-      channelId: channelId,
+      channelId: web3.utils.hexToBytes(channelId),
       peerFrom: web3.utils.hexToBytes(peerFrom),
       seqNum: seqNum,
       transferToPeer: transferToPeerProto,
-      pendingPayHashes: pendingPayHashes,
-      lastPayResolveDeadline: lastPayResolveDeadline
+      pendingPayIds: pendingPayIds,
+      lastPayResolveDeadline: lastPayResolveDeadline,
+      totalPendingAmount: totalPendingAmount
     };
     const simplexPaymentChannelProto = SimplexPaymentChannel.create(simplexPaymentChannel);
     const simplexPaymentChannelBytes = SimplexPaymentChannel.encode(simplexPaymentChannelProto)
@@ -581,7 +583,7 @@ module.exports = async (peers, clients) => {
     signer
   }) => {
     const simplexPaymentChannel = {
-      channelId: channelId,
+      channelId: web3.utils.hexToBytes(channelId),
       seqNum: 0
     };
     const simplexPaymentChannelProto = SimplexPaymentChannel.create(simplexPaymentChannel);
@@ -607,7 +609,8 @@ module.exports = async (peers, clients) => {
     logicType = 0,
     maxAmount,
     resolveDeadline = 999999,
-    resolveTimeout = 5
+    resolveTimeout = 5,
+    payResolver
   }) => {
     const transferToPeerProto = getTokenTransferProto({
       amount: maxAmount
@@ -626,7 +629,8 @@ module.exports = async (peers, clients) => {
       conditions: conditions,
       transferFunc: transferFuncProto,
       resolveDeadline: resolveDeadline,
-      resolveTimeout: resolveTimeout
+      resolveTimeout: resolveTimeout,
+      payResolver: web3.utils.hexToBytes(payResolver)
     }
     const conditionalPayProto = ConditionalPay.create(conditionalPay);
     return ConditionalPay.encode(conditionalPayProto)
@@ -643,6 +647,6 @@ module.exports = async (peers, clients) => {
     getResolvePayByConditionsRequestBytes,
     getConditions,
     getVouchedCondPayResultBytes,  // async
-    getPayHashListInfo
+    getPayIdListInfo
   };
 };

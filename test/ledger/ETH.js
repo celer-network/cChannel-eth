@@ -1078,7 +1078,7 @@ contract('CelerLedger using ETH', async accounts => {
     for (let i = 0; i < 2; i++) {  // for each simplex state
       for (j = 0; j < 2; j++) {  // for each pays in head PayIdList
         const logIndex = i * 2 + j;
-        assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
+        assert.equal(tx.logs[logIndex].event, 'ClearOnePay');
         assert.equal(tx.logs[logIndex].args.channelId, channelId);
         const payHash = sha3(web3.utils.bytesToHex(globalResult.condPays[i][0][j]));
         const payId = calculatePayId(payHash, payResolver.address);
@@ -1093,9 +1093,9 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(tx.logs[4].args.seqNums.toString(), [1, 1]);
   });
 
-  it('should fail to liquidatePays when payments are not finalized before last pay resolve deadline', async () => {
+  it('should fail to clearPays when payments are not finalized before last pay resolve deadline', async () => {
     try {
-      await instance.liquidatePays(
+      await instance.clearPays(
         channelId,
         peers[0],
         globalResult.payIdListBytesArrays[0][1]
@@ -1111,7 +1111,7 @@ contract('CelerLedger using ETH', async accounts => {
     assert.fail('should have thrown before');
   });
 
-  it('should liquidatePays correctly when payments are finalized', async () => {
+  it('should clearPays correctly when payments are finalized', async () => {
     // resolve all remaining payments
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
@@ -1134,7 +1134,7 @@ contract('CelerLedger using ETH', async accounts => {
     const amounts = [[3, 4], [7, 8]];
 
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {  // for each simplex state
-      tx = await instance.liquidatePays(
+      tx = await instance.clearPays(
         channelId,
         peers[peerIndex],
         globalResult.payIdListBytesArrays[peerIndex][1]
@@ -1142,7 +1142,7 @@ contract('CelerLedger using ETH', async accounts => {
       let count = 0;
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
         for (payIndex = 0; payIndex < globalResult.condPays[peerIndex][listIndex].length; payIndex++) {
-          assert.equal(tx.logs[count].event, 'LiquidateOnePay');
+          assert.equal(tx.logs[count].event, 'ClearOnePay');
           assert.equal(tx.logs[count].args.channelId, channelId);
           const payHash = sha3(web3.utils.bytesToHex(
             globalResult.condPays[peerIndex][listIndex][payIndex]
@@ -1155,7 +1155,7 @@ contract('CelerLedger using ETH', async accounts => {
         }
       }
     }
-    fs.appendFileSync(GAS_USED_LOG, 'liquidatePays() with 2 payments: ' + getCallGasUsed(tx) + '\n');
+    fs.appendFileSync(GAS_USED_LOG, 'clearPays() with 2 payments: ' + getCallGasUsed(tx) + '\n');
   });
 
   it('should fail to ConfirmSettle or ConfirmSettleFail (namely revert) due to not reaching settleFinalizedTime', async () => {
@@ -1202,7 +1202,7 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(withdrawals.toString(), [1110, 0]);
   });
 
-  it('should liquidatePays correctly after settleFinalizedTime', async () => {
+  it('should clearPays correctly after settleFinalizedTime', async () => {
     const signedSimplexStateArrayBytes = globalResult.signedSimplexStateArrayBytes;
     await instance.intendSettle(signedSimplexStateArrayBytes);
 
@@ -1214,7 +1214,7 @@ contract('CelerLedger using ETH', async accounts => {
     const amounts = [[3, 4], [7, 8]];
 
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {  // for each simplex state
-      tx = await instance.liquidatePays(
+      tx = await instance.clearPays(
         channelId,
         peers[peerIndex],
         globalResult.payIdListBytesArrays[peerIndex][1]
@@ -1222,7 +1222,7 @@ contract('CelerLedger using ETH', async accounts => {
       let count = 0;
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
         for (payIndex = 0; payIndex < globalResult.condPays[peerIndex][listIndex].length; payIndex++) {
-          assert.equal(tx.logs[count].event, 'LiquidateOnePay');
+          assert.equal(tx.logs[count].event, 'ClearOnePay');
           assert.equal(tx.logs[count].args.channelId, channelId);
           const payHash = sha3(web3.utils.bytesToHex(
             globalResult.condPays[peerIndex][listIndex][payIndex]
@@ -1427,7 +1427,7 @@ contract('CelerLedger using ETH', async accounts => {
     for (let i = 0; i < 2; i++) {  // for each simplex state
       for (j = 0; j < 2; j++) {  // for each pays in head PayIdList
         const logIndex = i * 2 + j;
-        assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
+        assert.equal(tx.logs[logIndex].event, 'ClearOnePay');
         // assert.equal(tx.logs[logIndex].args.channelId, request.channelId);
         const payHash = sha3(web3.utils.bytesToHex(condPays[i][0][j]));
         const payId = calculatePayId(payHash, payResolver.address);
@@ -1573,7 +1573,7 @@ contract('CelerLedger using ETH', async accounts => {
 
     const amounts = [1, 2];
     for (let i = 0; i < 2; i++) {  // for each pays in head PayIdList
-      assert.equal(tx.logs[i].event, 'LiquidateOnePay');
+      assert.equal(tx.logs[i].event, 'ClearOnePay');
       assert.equal(tx.logs[i].args.channelId, channelId);
       const payHash = sha3(web3.utils.bytesToHex(payIdListInfo.payBytesArray[0][i]));
       const payId = calculatePayId(payHash, payResolver.address);
@@ -1694,7 +1694,7 @@ contract('CelerLedger using ETH', async accounts => {
       if (payIdListInfos[i] != null) {
         // for each pays in head PayIdList
         for (j = 0; j < payIdListInfos[i].payBytesArray[0].length; j++) {
-          assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
+          assert.equal(tx.logs[logIndex].event, 'ClearOnePay');
           assert.equal(tx.logs[logIndex].args.channelId, channelIds[i]);
           const payHash = sha3(web3.utils.bytesToHex(payIdListInfos[i].payBytesArray[0][j]));
           const payId = calculatePayId(payHash, payResolver.address);
@@ -1837,7 +1837,7 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(tx.logs[0].args.receiver, peers[0]);
     assert.equal(tx.logs[0].args.amount.toString(), 50);
 
-    // clear current withdraw intent for future tests
+    // veto current withdraw intent for future tests
     await instance.vetoWithdraw(channelId, { from: peers[1] });
   });
 
@@ -1896,7 +1896,7 @@ contract('CelerLedger using ETH', async accounts => {
 
     const amounts = [1, 2];
     for (let i = 0; i < 2; i++) {  // for each pays in head PayIdList
-      assert.equal(tx.logs[i].event, 'LiquidateOnePay');
+      assert.equal(tx.logs[i].event, 'ClearOnePay');
       assert.equal(tx.logs[i].args.channelId, channelId);
       const payHash = sha3(web3.utils.bytesToHex(payIdListInfo.payBytesArray[0][i]));
       const payId = calculatePayId(payHash, payResolver.address);
@@ -1943,6 +1943,82 @@ contract('CelerLedger using ETH', async accounts => {
     }
 
     assert.fail('should have thrown before');
+  });
+
+  it('should deposit in batch successfully', async () => {
+    // deposit into two ETH channels and three ERC20 channels (two different ERC20 tokens) from a non-peer address
+    let request;
+    let openChannelRequest;
+    let tx;
+    let channelIds = [];
+    const depositAccount = accounts[9];
+
+    // open two ETH channels
+    for (let i = 0; i < 2; i++) {
+      request = await getOpenChannelRequest({
+        openDeadline: uniqueOpenDeadline++,
+        disputeTimeout: DISPUTE_TIMEOUT,
+        zeroTotalDeposit: true,
+        channelPeers: peers
+      });
+      openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+      tx = await instance.openChannel(openChannelRequest);
+      channelIds.push(tx.logs[0].args.channelId.toString());
+    }
+    // open two ERC20 channels with same ERC20 token
+    const eRC20Token1 = await ERC20ExampleToken.new();
+    for (let i = 0; i < 2; i++) {
+      const request = await getOpenChannelRequest({
+        openDeadline: uniqueOpenDeadline++,
+        disputeTimeout: DISPUTE_TIMEOUT,
+        zeroTotalDeposit: true,
+        tokenType: 2,
+        tokenAddress: eRC20Token1.address,
+        channelPeers: peers
+      });
+      openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+      tx = await instance.openChannel(openChannelRequest);
+      channelIds.push(tx.logs[0].args.channelId.toString());
+    }
+    // open another ERC20 channels with a new ERC20 token
+    const eRC20Token2 = await ERC20ExampleToken.new();
+    request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT,
+      zeroTotalDeposit: true,
+      tokenType: 2,
+      tokenAddress: eRC20Token2.address,
+      channelPeers: peers
+    });
+    openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    tx = await instance.openChannel(openChannelRequest);
+    channelIds.push(tx.logs[0].args.channelId.toString());
+
+    // a non-peer address approve to ledger address
+    await instance.disableBalanceLimits();
+    await ethPool.deposit(depositAccount, { value: 100000 })
+    await ethPool.approve(instance.address, 100000, { from: depositAccount });
+    await eRC20Token1.transfer(depositAccount, 100000, { from: accounts[0] });
+    await eRC20Token1.approve(instance.address, 100000, { from: depositAccount });
+    await eRC20Token2.transfer(depositAccount, 100000, { from: accounts[0] });
+    await eRC20Token2.approve(instance.address, 100000, { from: depositAccount });
+    let receivers = [peers[0], peers[1], peers[0], peers[1], peers[0]];
+    let amounts = [100, 200, 300, 400, 500];
+
+    tx = await instance.depositInBatch(channelIds, receivers, amounts, { from: depositAccount });
+    fs.appendFileSync(GAS_USED_LOG, 'depositInBatch() with 5 deposits: ' + getCallGasUsed(tx) + '\n');
+    for (let i = 0; i < 5; i++) {
+      assert.equal(tx.logs[i].event, 'Deposit');
+      assert.deepEqual(tx.logs[i].args.peerAddrs, peers);
+      let expectedDeposits;
+      if (peers[0] == receivers[i]) {
+        expectedDeposits = [amounts[i], 0];
+      } else {
+        expectedDeposits = [0, amounts[i]];
+      }
+      assert.equal(tx.logs[i].args.deposits.toString(), expectedDeposits);
+      assert.equal(tx.logs[i].args.withdrawals.toString(), [0, 0]);
+    }
   });
 });
 

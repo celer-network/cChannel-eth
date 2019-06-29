@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "./LedgerStruct.sol";
 import "../interface/ICelerLedger.sol";
@@ -98,7 +98,7 @@ library LedgerChannel {
     }
 
     /**
-     * @notice Return channel level configs
+     * @notice Return channel-level migration arguments
      * @param _c the channel to be viewed
      * @return channel dispute timeout
      * @return channel tokey type converted to uint
@@ -106,7 +106,7 @@ library LedgerChannel {
      * @return sequence number of cooperative withdraw
      * @dev related to Ledger Migration
      */
-    function getChannelConfig(
+    function getChannelMigrationArgs(
         LedgerStruct.Channel storage _c
     )
         external
@@ -122,7 +122,7 @@ library LedgerChannel {
     }
 
     /**
-     * @notice Return peers info of the channel
+     * @notice Return migration info of the peers in the channel
      * @param _c the channel to be viewed
      * @return peers' addresses
      * @return peers' deposits
@@ -132,7 +132,7 @@ library LedgerChannel {
      * @return peers' pendingPayOut map
      * @dev related to Ledger Migration
      */
-    function getPeersInfo(
+    function getPeersMigrationInfo(
         LedgerStruct.Channel storage _c
     )
         external
@@ -158,13 +158,155 @@ library LedgerChannel {
     }
 
     /**
-     * @notice Import channel config from old CelerLedger contract
+     * @notice Return channel's dispute timeout
+     * @param _c the channel to be viewed
+     * @return channel's dispute timeout
+     */
+    function getDisputeTimeout(LedgerStruct.Channel storage _c) external view returns(uint) {
+        return _c.disputeTimeout;
+    }
+
+    /**
+     * @notice Return channel's migratedTo address
+     * @param _c the channel to be viewed
+     * @return channel's migratedTo address
+     */
+    function getMigratedTo(LedgerStruct.Channel storage _c) external view returns(address) {
+        return _c.migratedTo;
+    }
+
+    /**
+     * @notice Return state seqNum map of a duplex channel
+     * @param _c the channel to be viewed
+     * @return peers' addresses
+     * @return two simplex state sequence numbers
+     */
+    function getStateSeqNumMap(
+        LedgerStruct.Channel storage _c
+    )
+        external
+        view
+        returns(address[2] memory, uint[2] memory)
+    {
+        LedgerStruct.PeerProfile[2] memory peerProfiles = _c.peerProfiles;
+        return (
+            [peerProfiles[0].peerAddr, peerProfiles[1].peerAddr],
+            [peerProfiles[0].state.seqNum, peerProfiles[1].state.seqNum]
+        );
+    }
+
+    /**
+     * @notice Return transferOut map of a duplex channel
+     * @param _c the channel to be viewed
+     * @return peers' addresses
+     * @return transferOuts of two simplex channels
+     */
+    function getTransferOutMap(
+        LedgerStruct.Channel storage _c
+    )
+        external
+        view
+        returns(address[2] memory, uint[2] memory)
+    {
+        LedgerStruct.PeerProfile[2] memory peerProfiles = _c.peerProfiles;
+        return (
+            [peerProfiles[0].peerAddr, peerProfiles[1].peerAddr],
+            [peerProfiles[0].state.transferOut, peerProfiles[1].state.transferOut]
+        );
+    }
+
+    /**
+     * @notice Return nextPayIdListHash map of a duplex channel
+     * @param _c the channel to be viewed
+     * @return peers' addresses
+     * @return nextPayIdListHashes of two simplex channels
+     */
+    function getNextPayIdListHashMap(
+        LedgerStruct.Channel storage _c
+    )
+        external
+        view
+        returns(address[2] memory, bytes32[2] memory)
+    {
+        LedgerStruct.PeerProfile[2] memory peerProfiles = _c.peerProfiles;
+        return (
+            [peerProfiles[0].peerAddr, peerProfiles[1].peerAddr],
+            [peerProfiles[0].state.nextPayIdListHash, peerProfiles[1].state.nextPayIdListHash]
+        );
+    }
+
+    /**
+     * @notice Return lastPayResolveDeadline map of a duplex channel
+     * @param _c the channel to be viewed
+     * @return peers' addresses
+     * @return lastPayResolveDeadlines of two simplex channels
+     */
+    function getLastPayResolveDeadlineMap(
+        LedgerStruct.Channel storage _c
+    )
+        external
+        view
+        returns(address[2] memory, uint[2] memory)
+    {
+        LedgerStruct.PeerProfile[2] memory peerProfiles = _c.peerProfiles;
+        return (
+            [peerProfiles[0].peerAddr, peerProfiles[1].peerAddr],
+            [peerProfiles[0].state.lastPayResolveDeadline, peerProfiles[1].state.lastPayResolveDeadline]
+        );
+    }
+
+    /**
+     * @notice Return pendingPayOut map of a duplex channel
+     * @param _c the channel to be viewed
+     * @return peers' addresses
+     * @return pendingPayOuts of two simplex channels
+     */
+    function getPendingPayOutMap(
+        LedgerStruct.Channel storage _c
+    )
+        external
+        view
+        returns(address[2] memory, uint[2] memory)
+    {
+        LedgerStruct.PeerProfile[2] memory peerProfiles = _c.peerProfiles;
+        return (
+            [peerProfiles[0].peerAddr, peerProfiles[1].peerAddr],
+            [peerProfiles[0].state.pendingPayOut, peerProfiles[1].state.pendingPayOut]
+        );
+    }
+
+    /**
+     * @notice Return the withdraw intent info of the channel
+     * @param _c the channel to be viewed
+     * @return receiver of the withdraw intent
+     * @return amount of the withdraw intent
+     * @return requestTime of the withdraw intent
+     * @return recipientChannelId of the withdraw intent
+     */
+    function getWithdrawIntent(
+        LedgerStruct.Channel storage _c
+    )
+        external
+        view
+        returns(address, uint, uint, bytes32)
+    {
+        LedgerStruct.WithdrawIntent memory withdrawIntent = _c.withdrawIntent;
+        return (
+            withdrawIntent.receiver,
+            withdrawIntent.amount,
+            withdrawIntent.requestTime,
+            withdrawIntent.recipientChannelId
+        );
+    }
+
+    /**
+     * @notice Import channel migration arguments from old CelerLedger contract
      * @param _c the channel to be viewed
      * @param _fromLedgerAddr old ledger address to import channel config from
      * @param _channelId ID of the channel to be viewed
      * @dev related to Ledger Migration
      */
-    function _importChannelConfig(
+    function _importChannelMigrationArgs(
         LedgerStruct.Channel storage _c,
         address payable _fromLedgerAddr,
         bytes32 _channelId
@@ -177,18 +319,18 @@ library LedgerChannel {
             tokenType,
             _c.token.tokenAddress,
             _c.cooperativeWithdrawSeqNum
-        ) = ICelerLedger(_fromLedgerAddr).getChannelConfig(_channelId);
+        ) = ICelerLedger(_fromLedgerAddr).getChannelMigrationArgs(_channelId);
         _c.token.tokenType = PbEntity.TokenType(tokenType);
     }
 
     /**
-     * @notice import channel peers info from old CelerLedger contract
+     * @notice import channel peers' migration info from old CelerLedger contract
      * @param _c the channel to be viewed
      * @param _fromLedgerAddr old ledger address to import channel config from
      * @param _channelId ID of the channel to be viewed
      * @dev related to Ledger Migration
      */
-    function _importPeersInfo(
+    function _importPeersMigrationInfo(
         LedgerStruct.Channel storage _c,
         address payable _fromLedgerAddr,
         bytes32 _channelId
@@ -202,7 +344,7 @@ library LedgerChannel {
             uint[2] memory seqNums,
             uint[2] memory transferOuts,
             uint[2] memory pendingPayOuts
-        ) = ICelerLedger(_fromLedgerAddr).getPeersInfo(_channelId);
+        ) = ICelerLedger(_fromLedgerAddr).getPeersMigrationInfo(_channelId);
 
         for (uint i = 0; i < 2; i++) {
             LedgerStruct.PeerProfile storage peerProfile = _c.peerProfiles[i];
@@ -245,7 +387,7 @@ library LedgerChannel {
         } else if (_peer == _c.peerProfiles[1].peerAddr) {
             return 1;
         } else {
-            require(false, "Nonexist peer");
+            revert("Nonexist peer");
         }
     }
 

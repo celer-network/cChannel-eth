@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "./lib/interface/IEthPool.sol";
 import "./lib/interface/ICelerWallet.sol";
@@ -66,8 +66,8 @@ contract EthPool is IEthPool {
      */
     function transferFrom(address _from, address payable _to, uint _value) public returns (bool) {
         allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_value);
-        _transfer(_from, _to, _value);
         emit Approval(_from, msg.sender, allowed[_from][msg.sender]);
+        _transfer(_from, _to, _value);
         return true;
     }
 
@@ -88,9 +88,13 @@ contract EthPool is IEthPool {
         returns (bool)
     {
         allowed[_from][msg.sender] = allowed[_from][msg.sender].sub(_value);
+        emit Approval(_from, msg.sender, allowed[_from][msg.sender]);
+        balances[_from] = balances[_from].sub(_value);
+        emit Transfer(_from, _walletAddr, _value);
+
         ICelerWallet wallet = ICelerWallet(_walletAddr);
         wallet.depositETH.value(_value)(_walletId);
-        emit Approval(_from, msg.sender, allowed[_from][msg.sender]);
+        
         return true;
     }
 

@@ -3,8 +3,8 @@
 ***** Deploy Gas Used *****
 VirtContractResolver Deploy Gas: 320511
 PayRegistry Deploy Gas: 833045
-PayResolver Deploy Gas: 2853532
+PayResolver Deploy Gas: 2885994
 
 ***** Function Calls Gas Used *****
-resolvePaymentByConditions(): 149300
-resolvePaymentByVouchedResult(): 156011
+resolvePaymentByConditions(): 149334
+resolvePaymentByVouchedResult(): 155981

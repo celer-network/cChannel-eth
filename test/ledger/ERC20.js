@@ -538,7 +538,7 @@ contract('CelerLedger using ERC20', async accounts => {
     for (let i = 0; i < 2; i++) {  // for each simplex channel
       for (j = 0; j < globalResult.condPays[i][0].length; j++) {  // for each pays in PayIdList
         const logIndex = i * 2 + j;
-        assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
+        assert.equal(tx.logs[logIndex].event, 'ClearOnePay');
         assert.equal(tx.logs[logIndex].args.channelId, channelId);
         const payHash = sha3(web3.utils.bytesToHex(globalResult.condPays[i][0][j]));
         const payId = calculatePayId(payHash, payResolver.address);
@@ -553,7 +553,7 @@ contract('CelerLedger using ERC20', async accounts => {
     assert.equal(tx.logs[4].args.seqNums.toString(), [1, 1]);
   });
 
-  it('should liquidatePays correctly', async () => {
+  it('should clearPays correctly', async () => {
     // resolve all remaining payments
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
@@ -574,7 +574,7 @@ contract('CelerLedger using ERC20', async accounts => {
     const amounts = [[3, 4], [7, 8]];
 
     for (peerIndex = 0; peerIndex < 2; peerIndex++) {  // for each simplex channel/peerFrom
-      tx = await instance.liquidatePays(
+      tx = await instance.clearPays(
         channelId,
         peers[peerIndex],
         globalResult.payIdListBytesArrays[peerIndex][1]
@@ -582,7 +582,7 @@ contract('CelerLedger using ERC20', async accounts => {
       let count = 0;
       for (listIndex = 1; listIndex < globalResult.condPays[peerIndex].length; listIndex++) {
         for (payIndex = 0; payIndex < globalResult.condPays[peerIndex][listIndex].length; payIndex++) {
-          assert.equal(tx.logs[count].event, 'LiquidateOnePay');
+          assert.equal(tx.logs[count].event, 'ClearOnePay');
           assert.equal(tx.logs[count].args.channelId, channelId);
           const payHash = sha3(web3.utils.bytesToHex(
             globalResult.condPays[peerIndex][listIndex][payIndex]
@@ -595,7 +595,7 @@ contract('CelerLedger using ERC20', async accounts => {
         }
       }
     }
-    fs.appendFileSync(GAS_USED_LOG, 'liquidatePays() with 2 payments: ' + getCallGasUsed(tx) + '\n');
+    fs.appendFileSync(GAS_USED_LOG, 'clearPays() with 2 payments: ' + getCallGasUsed(tx) + '\n');
   });
 
   it('should confirmSettle correctly', async () => {

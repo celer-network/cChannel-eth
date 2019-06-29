@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "./LedgerStruct.sol";
 import "./LedgerChannel.sol";
@@ -180,7 +180,7 @@ library LedgerOperation {
      * @dev simplex states in this array are not necessarily in the same channel,
      *   which means snapshotStates natively supports multi-channel batch processing.
      *   This function only updates seqNum, transferOut, pendingPayOut of each on-chain
-     *   simplex state. It can't ensure that the pending pays will be liquidated during
+     *   simplex state. It can't ensure that the pending pays will be cleared during
      *   settling the channel, which requires users call intendSettle with the same state.
      *   TODO: wait for Solidity's support to replace SignedSimplexStateArray with bytes[].
      * @param _self storage data of CelerLedger contract
@@ -217,9 +217,9 @@ library LedgerOperation {
             state.transferOut = simplexState.transferToPeer.receiver.amt;
             state.pendingPayOut = simplexState.totalPendingAmount;
 
-            if (i == simplexStatesNum - 1) {
+            if (i == simplexStatesNum.sub(1)) {
                 emit SnapshotStates(currentChannelId, c._getStateSeqNums());
-            } else if (i < simplexStatesNum - 1) {
+            } else if (i < simplexStatesNum.sub(1)) {
                 simplexState = PbEntity.decSimplexPaymentChannel(
                     signedSimplexStateArray.signedSimplexStates[i+1].simplexState
                 );
@@ -443,7 +443,7 @@ library LedgerOperation {
                 state.transferOut = simplexState.transferToPeer.receiver.amt;
                 state.nextPayIdListHash = simplexState.pendingPayIds.nextListHash;
                 state.lastPayResolveDeadline = simplexState.lastPayResolveDeadline;
-                _liquidatePays(_self, currentChannelId, peerFromId, simplexState.pendingPayIds.payIds);
+                _clearPays(_self, currentChannelId, peerFromId, simplexState.pendingPayIds.payIds);
             } else if (simplexState.seqNum == 0) {  // null state
                 // this implies both stored seqNums are 0
                 require(c.settleFinalizedTime == 0, "intendSettle before");
@@ -455,9 +455,9 @@ library LedgerOperation {
                 assert(false);
             }
 
-            if (i == simplexStatesNum - 1) {
+            if (i == simplexStatesNum.sub(1)) {
                 _updateOverallStatesByIntendState(_self, currentChannelId);
-            } else if (i < simplexStatesNum - 1) {
+            } else if (i < simplexStatesNum.sub(1)) {
                 simplexState = PbEntity.decSimplexPaymentChannel(
                     signedSimplexStateArray.signedSimplexStates[i+1].simplexState
                 );
@@ -479,7 +479,7 @@ library LedgerOperation {
      * @param _peerFrom address of the peer who send out funds
      * @param _payIdList bytes of a pay id list
      */
-    function liquidatePays(
+    function clearPays(
         LedgerStruct.Ledger storage _self,
         bytes32 _channelId,
         address _peerFrom,
@@ -497,7 +497,7 @@ library LedgerOperation {
 
         PbEntity.PayIdList memory payIdList = PbEntity.decPayIdList(_payIdList);
         state.nextPayIdListHash = payIdList.nextListHash;
-        _liquidatePays(_self, _channelId, peerFromId, payIdList.payIds);
+        _clearPays(_self, _channelId, peerFromId, payIdList.payIds);
     }
 
     /**
@@ -520,9 +520,9 @@ library LedgerOperation {
         require(blockNumber >= c.settleFinalizedTime, "Settle is not finalized");
 
         // require channel status of current intendSettle has been finalized,
-        // namely all payments have already been either liquidated or expired
-        // TODO: here we should use (lastPayResolveDeadline + liquidate safe margin)
-        //   instead of lastPayResolveDeadline to avoid race condition between liquidatePays
+        // namely all payments have already been either cleared or expired
+        // TODO: here we should use (lastPayResolveDeadline + clear safe margin)
+        //   instead of lastPayResolveDeadline to avoid race condition between clearPays
         //   and confirmSettle, which may lead to different settle balance. Add this safe
         //   margin to the value of lastPayResolveDeadline for now as a temporary solution.
         require(
@@ -599,7 +599,7 @@ library LedgerOperation {
             settleInfo.settleBalance[0].amt,
             settleInfo.settleBalance[1].amt
         ];
-        require(settleBalance[0] + settleBalance[1] == c.getTotalBalance(), "Balance sum mismatch");
+        require(settleBalance[0].add(settleBalance[1]) == c.getTotalBalance(), "Balance sum mismatch");
 
         _updateChannelStatus(_self, c, LedgerStruct.ChannelStatus.Closed);
 
@@ -789,7 +789,7 @@ library LedgerOperation {
     }
 
     /**
-     * @notice Clear the state of the channel
+     * @notice Reset the state of the channel
      * @param _self storage data of CelerLedger contract
      * @param _c the channel
      */
@@ -808,13 +808,13 @@ library LedgerOperation {
     }
 
     /**
-     * @notice Liquidate payments by their hash array
+     * @notice Clear payments by their hash array
      * @param _self storage data of CelerLedger contract
      * @param _channelId the channel ID
      * @param _peerId ID of the peer who sends out funds
-     * @param _payIds array of pay ids to liquidate
+     * @param _payIds array of pay ids to clear
      */
-    function _liquidatePays(
+    function _clearPays(
         LedgerStruct.Ledger storage _self,
         bytes32 _channelId,
         uint _peerId,
@@ -831,7 +831,7 @@ library LedgerOperation {
         uint totalAmtOut = 0;
         for (uint i = 0; i < outAmts.length; i++) {
             totalAmtOut = totalAmtOut.add(outAmts[i]);
-            emit LiquidateOnePay(_channelId, _payIds[i], c.peerProfiles[_peerId].peerAddr, outAmts[i]);
+            emit ClearOnePay(_channelId, _payIds[i], c.peerProfiles[_peerId].peerAddr, outAmts[i]);
         }
         c.peerProfiles[_peerId].state.transferOut =
             c.peerProfiles[_peerId].state.transferOut.add(totalAmtOut);
@@ -921,7 +921,7 @@ library LedgerOperation {
 
     event IntendSettle(bytes32 indexed channelId, uint[2] seqNums);
 
-    event LiquidateOnePay(bytes32 indexed channelId, bytes32 indexed payId, address indexed peerFrom, uint amount);
+    event ClearOnePay(bytes32 indexed channelId, bytes32 indexed payId, address indexed peerFrom, uint amount);
 
     event ConfirmSettle(bytes32 indexed channelId, uint[2] settleBalance);
 

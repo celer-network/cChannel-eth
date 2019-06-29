@@ -1,9 +1,10 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "./lib/interface/ICelerWallet.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
+import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
 
 /**
  * @title CelerWallet contract
@@ -11,7 +12,7 @@ import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
  *   This wallet can run independetly and doesn't rely on trust of any external contracts
  *   even CelerLedger to maximize its security.
  */
-contract CelerWallet is ICelerWallet {
+contract CelerWallet is ICelerWallet, Pausable {
     using SafeMath for uint;
     using SafeERC20 for IERC20;
 
@@ -24,7 +25,7 @@ contract CelerWallet is ICelerWallet {
         address operator;
         // adderss(0) for ETH
         mapping(address => uint) balances;
-        address proposedOperator;
+        address proposedNewOperator;
         mapping(address => bool) proposalVotes;
     }
 
@@ -45,7 +46,7 @@ contract CelerWallet is ICelerWallet {
      * @param _walletId id of the wallet to be operated
      * @param _addr address to be checked
      */
-    modifier onlyOwner(bytes32 _walletId, address _addr) {
+    modifier onlyWalletOwner(bytes32 _walletId, address _addr) {
         require(_isWalletOwner(_walletId, _addr), "Given address is not wallet owner");
         _;
     }
@@ -57,7 +58,15 @@ contract CelerWallet is ICelerWallet {
      * @param _nonce nonce given by caller to generate the wallet id
      * @return id of created wallet
      */
-    function create(address[] memory _owners, address _operator, bytes32 _nonce) public returns(bytes32) {
+    function create(
+        address[] memory _owners,
+        address _operator,
+        bytes32 _nonce
+    )
+        public
+        whenNotPaused
+        returns(bytes32)
+    {
         require(_operator != address(0), "New operator is address(0)");
 
         bytes32 walletId = keccak256(abi.encodePacked(address(this), msg.sender, _nonce));
@@ -76,7 +85,7 @@ contract CelerWallet is ICelerWallet {
      * @notice Deposit ETH to a wallet
      * @param _walletId id of the wallet to deposit into
      */
-    function depositETH(bytes32 _walletId) public payable {
+    function depositETH(bytes32 _walletId) public payable whenNotPaused {
         uint amount = msg.value;
         _updateBalance(_walletId, address(0), amount, MathOperation.Add);
         emit DepositToWallet(_walletId, address(0), amount);
@@ -85,7 +94,7 @@ contract CelerWallet is ICelerWallet {
     /**
      * @notice Deposit ERC20 tokens to a wallet
      * @param _walletId id of the wallet to deposit into
-     * @param _tokenAddress address of tokens to deposit
+     * @param _tokenAddress address of token to deposit
      * @param _from token payer
      * @param _amount deposit token amount
      */
@@ -96,6 +105,7 @@ contract CelerWallet is ICelerWallet {
         uint _amount
     )
         public
+        whenNotPaused
     {
         if (msg.sender == wallets[_walletId].operator) {
             require(
@@ -123,7 +133,7 @@ contract CelerWallet is ICelerWallet {
      *   maliciously fund locking. Withdraw pattern reference:
      *   https://solidity.readthedocs.io/en/v0.5.9/common-patterns.html#withdrawal-from-contracts
      * @param _walletId id of the wallet to withdraw from
-     * @param _tokenAddress address of tokens to withdraw
+     * @param _tokenAddress address of token to withdraw
      * @param _receiver token receiver
      * @param _amount withdrawal token amount
      */
@@ -134,20 +144,14 @@ contract CelerWallet is ICelerWallet {
         uint _amount
     )
         public
+        whenNotPaused
         onlyOperator(_walletId)
-        onlyOwner(_walletId, _receiver)
+        onlyWalletOwner(_walletId, _receiver)
     {
         _updateBalance(_walletId, _tokenAddress, _amount, MathOperation.Sub);
-        emit WithdrawFromWallet(_walletId, _receiver, _tokenAddress, _amount);
+        emit WithdrawFromWallet(_walletId, _tokenAddress, _receiver, _amount);
 
-        if (_tokenAddress == address(0)) {
-            // convert from address to address payable
-            // TODO: latest version of openzeppelin Address.sol provide this api toPayable()
-            address payable receiver  = address(uint160(_receiver));
-            receiver.transfer(_amount);
-        } else {
-            IERC20(_tokenAddress).safeTransfer(_receiver, _amount);
-        }
+        _withdrawToken(_tokenAddress, _receiver, _amount);
     }
 
     /**
@@ -156,7 +160,7 @@ contract CelerWallet is ICelerWallet {
      *   of this transfer
      * @param _fromWalletId id of wallet to transfer funds from
      * @param _toWalletId id of wallet to transfer funds to
-     * @param _tokenAddress address of tokens to transfer
+     * @param _tokenAddress address of token to transfer
      * @param _receiver beneficiary who transfers her funds from one wallet to another wallet
      * @param _amount transferred token amount
      */
@@ -168,13 +172,14 @@ contract CelerWallet is ICelerWallet {
         uint _amount
     )
         public
+        whenNotPaused
         onlyOperator(_fromWalletId)
-        onlyOwner(_fromWalletId, _receiver)
-        onlyOwner(_toWalletId, _receiver)
+        onlyWalletOwner(_fromWalletId, _receiver)
+        onlyWalletOwner(_toWalletId, _receiver)
     {
         _updateBalance(_fromWalletId, _tokenAddress, _amount, MathOperation.Sub);
         _updateBalance(_toWalletId, _tokenAddress, _amount, MathOperation.Add);
-        emit TransferToWallet(_fromWalletId, _toWalletId, _receiver, _tokenAddress, _amount);
+        emit TransferToWallet(_fromWalletId, _toWalletId, _tokenAddress, _receiver, _amount);
     }
 
     /**
@@ -187,6 +192,7 @@ contract CelerWallet is ICelerWallet {
         address _newOperator
     )
         public
+        whenNotPaused
         onlyOperator(_walletId)
     {
         require(_newOperator != address(0), "New operator is address(0)");
@@ -199,7 +205,8 @@ contract CelerWallet is ICelerWallet {
 
     /**
      * @notice Wallet owners propose and assign a new operator of their wallet
-     * @dev it will assign a new operator if all owners propose the same new operator
+     * @dev it will assign a new operator if all owners propose the same new operator.
+     *   This does not require unpaused.
      * @param _walletId id of wallet which owners propose new operator of
      * @param _newOperator the new operator proposal
      */
@@ -208,23 +215,55 @@ contract CelerWallet is ICelerWallet {
         address _newOperator
     )
         public
-        onlyOwner(_walletId, msg.sender)
+        onlyWalletOwner(_walletId, msg.sender)
     {
         require(_newOperator != address(0), "New operator is address(0)");
 
         Wallet storage w = wallets[_walletId];
-        if (_newOperator != w.proposedOperator) {
+        if (_newOperator != w.proposedNewOperator) {
             _clearVotes(w);
-            w.proposedOperator = _newOperator;
+            w.proposedNewOperator = _newOperator;
         }
 
         w.proposalVotes[msg.sender] = true;
+        emit ProposeNewOperator(_walletId, _newOperator, msg.sender);
+
         if (_checkAllVotes(w)) {
             address oldOperator = w.operator;
             w.operator = _newOperator;
             emit UpdateOperator(_walletId, oldOperator, _newOperator);
             _clearVotes(w);
         }
+    }
+
+    /**
+     * @notice Pauser drains one type of tokens when paused
+     * @dev This is for emergency situations.
+     * @param _tokenAddress address of token to drain
+     * @param _receiver token receiver
+     * @param _amount drained token amount
+     */
+    function drainToken(
+        address _tokenAddress,
+        address _receiver,
+        uint _amount
+    )
+        public
+        whenPaused
+        onlyPauser
+    {
+        emit DrainToken(_tokenAddress, _receiver, _amount);
+
+        _withdrawToken(_tokenAddress, _receiver, _amount);
+    }
+
+    /**
+     * @notice Get owners of a given wallet
+     * @param _walletId id of the queried wallet
+     * @return wallet's owners
+     */
+    function getWalletOwners(bytes32 _walletId) external view returns(address[] memory) {
+        return wallets[_walletId].owners;
     }
 
     /**
@@ -247,6 +286,51 @@ contract CelerWallet is ICelerWallet {
     }
 
     /**
+     * @notice Get proposedNewOperator of a given wallet
+     * @param _walletId id of the queried wallet
+     * @return wallet's proposedNewOperator
+     */
+    function getProposedNewOperator(bytes32 _walletId) external view returns(address) {
+        return wallets[_walletId].proposedNewOperator;
+
+    }
+
+    /**
+     * @notice Get the vote of an owner for the proposedNewOperator of a wallet
+     * @param _walletId id of the queried wallet
+     * @param _owner owner to be checked
+     * @return the owner's vote for the proposedNewOperator
+     */
+    function getProposalVote(
+        bytes32 _walletId,
+        address _owner
+    )
+        external
+        view
+        onlyWalletOwner(_walletId, _owner)
+        returns(bool)
+    {
+        return wallets[_walletId].proposalVotes[_owner];
+    }
+
+    /**
+     * @notice Internal function to withdraw out one type of token
+     * @param _tokenAddress address of token to withdraw
+     * @param _receiver token receiver
+     * @param _amount withdrawal token amount
+     */
+    function _withdrawToken(address _tokenAddress, address _receiver, uint _amount) internal {
+        if (_tokenAddress == address(0)) {
+            // convert from address to address payable
+            // TODO: latest version of openzeppelin Address.sol provide this api toPayable()
+            address payable receiver  = address(uint160(_receiver));
+            receiver.transfer(_amount);
+        } else {
+            IERC20(_tokenAddress).safeTransfer(_receiver, _amount);
+        }
+    }
+
+    /**
      * @notice Update balance record
      * @param _walletId id of wallet to update
      * @param _tokenAddress address of token to update
@@ -259,7 +343,7 @@ contract CelerWallet is ICelerWallet {
         uint _amount,
         MathOperation _op
     )
-        private
+        internal
     {
         Wallet storage w = wallets[_walletId];
         if (_op == MathOperation.Add) {
@@ -275,7 +359,7 @@ contract CelerWallet is ICelerWallet {
      * @notice Clear all votes of new operator proposals of the wallet
      * @param _w the wallet
      */
-    function _clearVotes(Wallet storage _w) private {
+    function _clearVotes(Wallet storage _w) internal {
         for (uint i = 0; i < _w.owners.length; i++) {
             _w.proposalVotes[_w.owners[i]] = false;
         }
@@ -286,7 +370,7 @@ contract CelerWallet is ICelerWallet {
      * @param _w the wallet
      * @return true if all owners have voted for a same operator; otherwise false
      */
-    function _checkAllVotes(Wallet storage _w) private view returns(bool) {
+    function _checkAllVotes(Wallet storage _w) internal view returns(bool) {
         for (uint i = 0; i < _w.owners.length; i++) {
             if (_w.proposalVotes[_w.owners[i]] == false) {
                 return false;
@@ -301,7 +385,7 @@ contract CelerWallet is ICelerWallet {
      * @param _addr address to check
      * @return true if this address is an owner of the wallet; otherwise false
      */
-    function _isWalletOwner(bytes32 _walletId, address _addr) private view returns(bool) {
+    function _isWalletOwner(bytes32 _walletId, address _addr) internal view returns(bool) {
         Wallet storage w = wallets[_walletId];
         for (uint i = 0; i < w.owners.length; i++) {
             if (_addr == w.owners[i]) {

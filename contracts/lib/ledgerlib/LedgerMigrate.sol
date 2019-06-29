@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "./LedgerOperation.sol";
 import "./LedgerChannel.sol";
@@ -81,8 +81,8 @@ library LedgerMigrate {
         );
 
         _self._updateChannelStatus(c, LedgerStruct.ChannelStatus.Operable);
-        c._importChannelConfig(fromLedgerAddrPayable, channelId);
-        c._importPeersInfo(fromLedgerAddrPayable, channelId);
+        c._importChannelMigrationArgs(fromLedgerAddrPayable, channelId);
+        c._importPeersMigrationInfo(fromLedgerAddrPayable, channelId);
 
         emit MigrateChannelFrom(channelId, _fromLedgerAddr);
     }

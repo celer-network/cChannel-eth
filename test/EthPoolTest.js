@@ -98,15 +98,15 @@ contract('EthPool', async accounts => {
       'transferFrom(): ' + getCallGasUsed(tx) + '\n'
     );
 
-    assert.equal(tx.logs[0].event, 'Transfer');
-    assert.equal(tx.logs[0].args.from, accounts[0]);
-    assert.equal(tx.logs[0].args.to, toAddress);
-    assert.equal(tx.logs[0].args.value.toString(), '150');
+    assert.equal(tx.logs[0].event, 'Approval');
+    assert.equal(tx.logs[0].args.owner, accounts[0]);
+    assert.equal(tx.logs[0].args.spender, accounts[1]);
+    assert.equal(tx.logs[0].args.value.toString(), '50');
 
-    assert.equal(tx.logs[1].event, 'Approval');
-    assert.equal(tx.logs[1].args.owner, accounts[0]);
-    assert.equal(tx.logs[1].args.spender, accounts[1]);
-    assert.equal(tx.logs[1].args.value.toString(), '50');
+    assert.equal(tx.logs[1].event, 'Transfer');
+    assert.equal(tx.logs[1].args.from, accounts[0]);
+    assert.equal(tx.logs[1].args.to, toAddress);
+    assert.equal(tx.logs[1].args.value.toString(), '150');
 
     balance = await web3.eth.getBalance(toAddress);
     assert.equal(balance.toString(), '150');

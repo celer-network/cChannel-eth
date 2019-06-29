@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "../interface/ICelerWallet.sol";
 import "../interface/IEthPool.sol";

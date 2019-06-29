@@ -87,7 +87,7 @@ module.exports = async (peers, clients) => {
   }) => {
     // 1-d array of PayIdList proto
     let payIdListProtos = [];
-    // 1-d array of PayIdList bytes, for liquidating pays in CelerLedger
+    // 1-d array of PayIdList bytes, for clearing pays in CelerLedger
     let payIdListBytesArray = [];
     // 2-d array of pay bytes in list of PayIdList of a simplex channel, 
     // for resolving pays with PayRegistry.

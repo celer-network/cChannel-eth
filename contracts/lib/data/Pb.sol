@@ -123,6 +123,7 @@ library Pb {
     }
 
     function _uint256(bytes memory b) internal pure returns (uint256 v) {
+        require(b.length <= 32);  // b's length must be smaller than or equal to 32
         assembly { v := mload(add(b, 32)) }  // load all 32bytes to v
         v = v >> (8 * (32 - b.length));  // only first b.length is valid
     }

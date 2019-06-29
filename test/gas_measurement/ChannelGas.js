@@ -29,6 +29,7 @@ const VirtResolver = artifacts.require('VirtContractResolver');
 const EthPool = artifacts.require('EthPool');
 const PayRegistry = artifacts.require('PayRegistry');
 const PayResolver = artifacts.require('PayResolver');
+const ERC20ExampleToken = artifacts.require('ERC20ExampleToken');
 
 contract('Measure CelerChannel gas usage with fine granularity', async accounts => {
   const peers = getSortedArray([accounts[0], accounts[1]]);
@@ -36,8 +37,10 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
   const DISPUTE_TIMEOUT = 999999999;
   const SNAPSHOT_STATES_LOG = 'gas_used_logs/fine_granularity/SnapshotStates.txt';
   const SETTLE_ONE_STATE_LOG = 'gas_used_logs/fine_granularity/IntendSettle-OneState.txt';
-  const LIQUIDATE_PAYS_LOG = 'gas_used_logs/fine_granularity/LiquidatePays.txt';
+  const CLEAR_PAYS_LOG = 'gas_used_logs/fine_granularity/ClearPays.txt';
   const SETTLE_TWO_STATES_LOG = 'gas_used_logs/fine_granularity/IntendSettle-TwoStates.txt';
+  const DEPOSIT_ETH_IN_BATCH_LOG = 'gas_used_logs/fine_granularity/DepositEthInBatch.txt';
+  const DEPOSIT_ERC20_IN_BATCH_LOG = 'gas_used_logs/fine_granularity/DepositERC20InBatch.txt';
 
   // contract enforce ascending order of addresses
   let instance;
@@ -46,6 +49,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
   let payRegistry;
   let payResolver;
   let intendSettleSeqNum = 1;
+  let uniqueOpenDeadline = 100000000;
 
   let protoChainInstance;
   let getOpenChannelRequest;
@@ -56,8 +60,10 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
   // data points for linear regression
   let snapshotStatesDP = [];
   let settleOneStateDP = [];
-  let liquidatePaysDP = [];
+  let clearPaysDP = [];
   let settleTwoStatesDP = [];
+  let depositEthDP = [];
+  let depositERC20DP = [];
 
   before(async () => {
     fs.writeFileSync(SNAPSHOT_STATES_LOG, '********** Gas Measurement of snapshotStates two states with multi pays **********\n\n');
@@ -66,11 +72,17 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     fs.writeFileSync(SETTLE_ONE_STATE_LOG, '********** Gas Measurement of intendSettle() one state with multi pays **********\n\n');
     fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'pay number in head payIdList,\tused gas\n');
 
-    fs.writeFileSync(LIQUIDATE_PAYS_LOG, '********** Gas Measurement of liquidatePays() multi pays **********\n\n');
-    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'pay number per following payIdList(i.e. except head payIdList),\tused gas\n');
+    fs.writeFileSync(CLEAR_PAYS_LOG, '********** Gas Measurement of clearPays() multi pays **********\n\n');
+    fs.appendFileSync(CLEAR_PAYS_LOG, 'pay number per following payIdList(i.e. except head payIdList),\tused gas\n');
 
     fs.writeFileSync(SETTLE_TWO_STATES_LOG, '********** Gas Measurement of intendSettle() two states with multi pays **********\n\n');
     fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'pay number in head payIdList,\tused gas\n');
+
+    fs.writeFileSync(DEPOSIT_ETH_IN_BATCH_LOG, '********** Gas Measurement of depositInBatch() **********\n\n');
+    fs.appendFileSync(DEPOSIT_ETH_IN_BATCH_LOG, 'batch size,\tused gas\n');
+
+    fs.writeFileSync(DEPOSIT_ERC20_IN_BATCH_LOG, '********** Gas Measurement of depositInBatch() **********\n\n');
+    fs.appendFileSync(DEPOSIT_ERC20_IN_BATCH_LOG, 'batch size,\tused gas\n');
 
     const virtResolver = await VirtResolver.new();
     ethPool = await EthPool.new();
@@ -116,7 +128,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     // open a new channel
     const request = await getOpenChannelRequest({
       CelerLedgerAddress: instance.address,
-      openDeadline: 100000000,
+      openDeadline: uniqueOpenDeadline++,
       disputeTimeout: DISPUTE_TIMEOUT,
       zeroTotalDeposit: true
     });
@@ -150,13 +162,13 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'Max pay number in head payIdList is: ' + maxPayNumPerList.toString() + '\n');
     fs.appendFileSync(SETTLE_ONE_STATE_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
 
-    regressionResult = regression.linear(liquidatePaysDP);
+    regressionResult = regression.linear(clearPaysDP);
     gradient = regressionResult.equation[0];
     yIntercept = regressionResult.equation[1];
     maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
-    fs.appendFileSync(LIQUIDATE_PAYS_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumPerList + ' + yIntercept.toString() + '\n');
-    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'Max pay number per following payIdList (i.e. except head payIdList) is: ' + maxPayNumPerList.toString() + '\n');
-    fs.appendFileSync(LIQUIDATE_PAYS_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
+    fs.appendFileSync(CLEAR_PAYS_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumPerList + ' + yIntercept.toString() + '\n');
+    fs.appendFileSync(CLEAR_PAYS_LOG, 'Max pay number per following payIdList (i.e. except head payIdList) is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(CLEAR_PAYS_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
 
     regressionResult = regression.linear(settleTwoStatesDP);
     gradient = regressionResult.equation[0];
@@ -165,6 +177,22 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     fs.appendFileSync(SETTLE_TWO_STATES_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * payNumInHeadList + ' + yIntercept.toString() + '\n');
     fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'Max pay number in head payIdList is: ' + maxPayNumPerList.toString() + '\n');
     fs.appendFileSync(SETTLE_TWO_STATES_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
+
+    regressionResult = regression.linear(depositEthDP);
+    gradient = regressionResult.equation[0];
+    yIntercept = regressionResult.equation[1];
+    maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
+    fs.appendFileSync(DEPOSIT_ETH_IN_BATCH_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * batchSize + ' + yIntercept.toString() + '\n');
+    fs.appendFileSync(DEPOSIT_ETH_IN_BATCH_LOG, 'Max batch size of deposit ETH in batch is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(DEPOSIT_ETH_IN_BATCH_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
+
+    regressionResult = regression.linear(depositERC20DP);
+    gradient = regressionResult.equation[0];
+    yIntercept = regressionResult.equation[1];
+    maxPayNumPerList = Math.floor((gasLimit - yIntercept) / gradient);
+    fs.appendFileSync(DEPOSIT_ERC20_IN_BATCH_LOG, '\nLinear regression result: gasUsed = ' + gradient.toString() + ' * batchSize + ' + yIntercept.toString() + '\n');
+    fs.appendFileSync(DEPOSIT_ERC20_IN_BATCH_LOG, 'Max batch size of deposit ERC20 in batch is: ' + maxPayNumPerList.toString() + '\n');
+    fs.appendFileSync(DEPOSIT_ERC20_IN_BATCH_LOG, 'Coefficient of determination (R^2) is: ' + regressionResult.r2.toString() + '\n');
   });
 
   async function twoStatesSnapshotStates(payNumPerList) {
@@ -197,7 +225,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
     });
   }
 
-  async function oneStateIntendSettleAndLiquidatePays(payNumPerList) {
+  async function oneStateIntendSettleAndClearPays(payNumPerList) {
     let result;
     const payAmt = 10;
 
@@ -246,7 +274,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       assert.equal(status, 2);
 
       for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {  // for each pays in head PayIdList
-        assert.equal(tx.logs[payIndex].event, 'LiquidateOnePay');
+        assert.equal(tx.logs[payIndex].event, 'ClearOnePay');
         assert.equal(tx.logs[payIndex].args.channelId, channelId);
         const payHash = sha3(web3.utils.bytesToHex(result.condPays[peerIndex][0][payIndex]));
         const payId = calculatePayId(payHash, payResolver.address);
@@ -260,9 +288,9 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       assert.equal(tx.logs[payNumPerList].args.seqNums[0].toString(), intendSettleSeqNum.toString());
     });
 
-    it('measure liquidatePays with ' + payNumPerList.toString() + ' pays', async () => {
+    it('measure clearPays with ' + payNumPerList.toString() + ' pays', async () => {
       const peerIndex = 0;  // only one state associated with peer 0
-      const listIndex = 1;  // only liquidate the next payIdList of head payIdList
+      const listIndex = 1;  // only clear the next payIdList of head payIdList
 
       // resolve all remaining payments
       for (payIndex = 0; payIndex < result.condPays[peerIndex][listIndex].length; payIndex++) {
@@ -280,14 +308,14 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       await mineBlockUntil(block.number + 6, accounts[0]);
 
       let payHash;
-      let tx = await instance.liquidatePays(
+      let tx = await instance.clearPays(
         channelId,
         peers[peerIndex],
         result.payIdListBytesArrays[peerIndex][1]
       );
 
       for (payIndex = 0; payIndex < result.condPays[peerIndex][listIndex].length; payIndex++) {
-        assert.equal(tx.logs[payIndex].event, 'LiquidateOnePay');
+        assert.equal(tx.logs[payIndex].event, 'ClearOnePay');
         assert.equal(tx.logs[payIndex].args.channelId, channelId);
         payHash = sha3(web3.utils.bytesToHex(
           result.condPays[peerIndex][listIndex][payIndex]
@@ -299,8 +327,8 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       }
 
       const usedGas = getCallGasUsed(tx);
-      liquidatePaysDP.push([payNumPerList, usedGas]);
-      fs.appendFileSync(LIQUIDATE_PAYS_LOG, payNumPerList.toString() + '\t' + usedGas + '\n');
+      clearPaysDP.push([payNumPerList, usedGas]);
+      fs.appendFileSync(CLEAR_PAYS_LOG, payNumPerList.toString() + '\t' + usedGas + '\n');
     });
   }
 
@@ -356,7 +384,7 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       let logIndex = 0;
       for (let peerIndex = 0; peerIndex < 2; peerIndex++) {
         for (let payIndex = 0; payIndex < payNumPerList; payIndex++) {  // for each pays in head PayIdList
-          assert.equal(tx.logs[logIndex].event, 'LiquidateOnePay');
+          assert.equal(tx.logs[logIndex].event, 'ClearOnePay');
           assert.equal(tx.logs[logIndex].args.channelId, channelId);
           const payHash = sha3(web3.utils.bytesToHex(result.condPays[peerIndex][0][payIndex]));
           const payId = calculatePayId(payHash, payResolver.address);
@@ -370,6 +398,97 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
       assert.equal(tx.logs[logIndex].event, 'IntendSettle');
       assert.equal(tx.logs[logIndex].args.channelId, channelId);
       assert.equal(tx.logs[logIndex].args.seqNums.toString(), [intendSettleSeqNum, intendSettleSeqNum]);
+    });
+  }
+
+  async function depositInBatch(batchSize) {
+    it('measure deposit ETH in batch with batch size of ' + batchSize.toString(), async () => {
+      let request;
+      let openChannelRequest;
+      let tx;
+      let channelIds = [];
+      let receivers = [];
+      let amounts = [];
+      const depositAccount = accounts[9];
+      const depositAmount = 1;
+
+      // open Eth channels
+      for (let i = 0; i < batchSize; i++) {
+        request = await getOpenChannelRequest({
+          openDeadline: uniqueOpenDeadline++,
+          disputeTimeout: DISPUTE_TIMEOUT,
+          zeroTotalDeposit: true,
+          channelPeers: peers
+        });
+        openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+        tx = await instance.openChannel(openChannelRequest);
+        channelIds.push(tx.logs[0].args.channelId.toString());
+        receivers.push(peers[0]);
+        amounts.push(depositAmount);
+      }
+
+      // a non-peer address approve to ledger address
+      await instance.disableBalanceLimits();
+      await ethPool.deposit(depositAccount, { value: 100000 })
+      await ethPool.approve(instance.address, 100000, { from: depositAccount });
+
+      tx = await instance.depositInBatch(channelIds, receivers, amounts, { from: depositAccount });
+      const usedGas = getCallGasUsed(tx);
+      depositEthDP.push([batchSize, usedGas]);
+      fs.appendFileSync(DEPOSIT_ETH_IN_BATCH_LOG, batchSize.toString() + '\t' + usedGas + '\n');
+
+      for (let i = 0; i < batchSize; i++) {
+        assert.equal(tx.logs[i].event, 'Deposit');
+        assert.deepEqual(tx.logs[i].args.peerAddrs, peers);
+        assert.equal(tx.logs[i].args.deposits.toString(), [1, 0]);
+        assert.equal(tx.logs[i].args.withdrawals.toString(), [0, 0]);
+      }
+    });
+
+    it('measure deposit ERC20 in batch with batch size of ' + batchSize.toString(), async () => {
+      let request;
+      let openChannelRequest;
+      let tx;
+      let channelIds = [];
+      let receivers = [];
+      let amounts = [];
+      const depositAccount = accounts[9];
+      const depositAmount = 1;
+      const eRC20 = await ERC20ExampleToken.new();
+
+      // open ERC20 channels
+      for (let i = 0; i < batchSize; i++) {
+        request = await getOpenChannelRequest({
+          openDeadline: uniqueOpenDeadline++,
+          disputeTimeout: DISPUTE_TIMEOUT,
+          zeroTotalDeposit: true,
+          tokenType: 2,
+          tokenAddress: eRC20.address,
+          channelPeers: peers
+        });
+        openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+        tx = await instance.openChannel(openChannelRequest);
+        channelIds.push(tx.logs[0].args.channelId.toString());
+        receivers.push(peers[0]);
+        amounts.push(depositAmount);
+      }
+
+      // a non-peer address approve to ledger address
+      await instance.disableBalanceLimits();
+      await eRC20.transfer(depositAccount, 100000, { from: accounts[0] });
+      await eRC20.approve(instance.address, 100000, { from: depositAccount });
+
+      tx = await instance.depositInBatch(channelIds, receivers, amounts, { from: depositAccount });
+      const usedGas = getCallGasUsed(tx);
+      depositERC20DP.push([batchSize, usedGas]);
+      fs.appendFileSync(DEPOSIT_ERC20_IN_BATCH_LOG, batchSize.toString() + '\t' + usedGas + '\n');
+
+      for (let i = 0; i < batchSize; i++) {
+        assert.equal(tx.logs[i].event, 'Deposit');
+        assert.deepEqual(tx.logs[i].args.peerAddrs, peers);
+        assert.equal(tx.logs[i].args.deposits.toString(), [1, 0]);
+        assert.equal(tx.logs[i].args.withdrawals.toString(), [0, 0]);
+      }
     });
   }
 
@@ -392,11 +511,17 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
 
   // Settling channel status
   for (let i = 0; i < numSmall; i++) {
-    oneStateIntendSettleAndLiquidatePays(i * stepSmall + startSmall);
+    oneStateIntendSettleAndClearPays(i * stepSmall + startSmall);
     twoStatesIntendSettle(i * stepSmall + startSmall);
   }
   for (let i = 0; i < numLarge; i++) {
-    oneStateIntendSettleAndLiquidatePays(i * stepLarge + startLarge);
+    oneStateIntendSettleAndClearPays(i * stepLarge + startLarge);
     twoStatesIntendSettle(i * stepLarge + startLarge);
+  }
+
+  // depositInBatch
+  const bound = 15;  // use 45 for fine granularity measurement
+  for (let i = 1; i < bound; i += 10) {
+    depositInBatch(i);
   }
 });

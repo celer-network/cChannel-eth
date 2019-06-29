@@ -1,13 +1,11 @@
-# cChannel-eth (WIP)
+# cChannel-eth
 
 [![Build Status](https://travis-ci.org/celer-network/cChannel-eth.svg?branch=master)](https://travis-ci.org/celer-network/cChannel-eth)
 
 * [Overview](https://github.com/celer-network/cChannel-eth#overview)
-* [Work In Progress (WIP) Notice](https://github.com/celer-network/cChannel-eth#work-in-progress-wip-notice)
 * [Core Concepts](https://github.com/celer-network/cChannel-eth#core-concepts)
 * [Release Features](https://github.com/celer-network/cChannel-eth#release-features)
 * [Protocol Buffers Usage](https://github.com/celer-network/cChannel-eth#protocol-buffers-usage)
-* [Testnet](https://github.com/celer-network/cChannel-eth#testnet)
 * [Solidity Version](https://github.com/celer-network/cChannel-eth#solidity-version)
 * [Code Structure](https://github.com/celer-network/cChannel-eth#code-structure)
 	* [contracts folder](https://github.com/celer-network/cChannel-eth#contracts-folder)
@@ -19,10 +17,6 @@
 cChannel-eth is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
 
 For more details about cChannel and Celer Network, please refer to [Celer Network's official website](https://www.celer.network/).
-
-## Work In Progress (WIP) Notice
-cChannel-eth is currently under active developments in our private repo. This public repo only acts as a showcase of periodically public updates.
-**This repo is not intended for production use and please DO NOT use the code in this repo with any real money, funds or assets.**
 
 ## Core Concepts
 * **Peers**: channel participants (only supports two-peer channel for now).
@@ -37,7 +31,7 @@ cChannel-eth is currently under active developments in our private repo. This pu
 * **Payment Destination**: the address receives a payment, namely the destination of this payment route.
 * **Vouched Conditional Payment Result**: the result of a conditional payment agreed by the payment source and payment destination.
 * **PayRegistry**: a global registry which updates and records all payment results.
-* **PayIdList**: data structure including a list of payment ids and a hash pointer to next PayIdList, which is used in Batch Multi-Payment Liquidation.
+* **PayIdList**: data structure including a list of payment ids and a hash pointer to next PayIdList, which is used in Batch Multi-Payment Clearing.
 * **EthPool**: A ETH wrapper to provide ERC20-like APIs for ETH.
 * **Virtual Address Resolver**: establishes the mapping from off-chain address to on-chain address.
 
@@ -60,7 +54,7 @@ cChannel-eth is currently under active developments in our private repo. This pu
 * **Cooperative Dynamic Withdraw**: skips challenge period and withdraws fund before channel finalized when both peers reach an agreement.
 * **Lightweight cooperative on-chain checkpoint**: support snapshotting transfer map of co-signed states on-chain.
 * **Batch Multi-Channel Settlements**: intends to settle multiple channels in one batch with a single on-chain transaction.
-* **Batch Multi-Payment Liquidation**: liquidates *N* payments in one batch with a single on-chain transaction using PayIdList, which only requires O(1) on-chain storage and O(*n*/*N*) on-chain verifications to liquidate *n* payments.
+* **Batch Multi-Payment Clearing**: clears *N* payments in one batch with a single on-chain transaction using PayIdList, which only requires O(1) on-chain storage and O(*n*/*N*) on-chain verifications to clear *n* payments.
 * **Cooperative Settle**: skips challenge period and settles a channel when both peers reach an agreement.
 
 ## Protocol Buffers Usage
@@ -71,20 +65,8 @@ We have also developed and open sourced a Solidity library generator of proto3 d
 
 Two proto3 files are used in cChannel-eth, `chain.proto` and `entity.proto`, which are stored in `lib/data/proto/`. `chain.proto` defines data structures only used in on-chain contracts, while `entity.proto` defines data structures used both in on-chain contracts and off-chain communication protocols.
 
-## Latest Deployments
-### Ropsten
-#### Celer Channel
-* Contract address: [0x66804e13b02d2d2d4174ae3b538bf968411bb6c1](https://ropsten.etherscan.io/address/0x66804e13b02d2d2d4174ae3b538bf968411bb6c1)
-* Deployed code: [CelerChannel.sol](https://github.com/celer-network/cChannel-eth/blob/v0.11.0/contracts/CelerChannel.sol)
-
-### Alpha Mainnet
-**ATTENTION**: this deployment is only for Alpha release testing. Please DO NOT deposit any real ETH, valuable tokens or funds into this version. Celer is not responsible for any loss.
-#### Celer Channel
-* Contract address: [0xa021fc97622f4259745c8604fb7f6e007a78d4f4](https://etherscan.io/address/0xa021fc97622f4259745c8604fb7f6e007a78d4f4)
-* Deployed code: [CelerChannel.sol](https://github.com/celer-network/cChannel-eth/blob/v0.11.0/contracts/CelerChannel.sol)
-
 ## Solidity Version
-Solidity `^0.5.0` or above is required to run cChannel-eth contracts.
+Solidity `^0.5.1` or above is required to run cChannel-eth contracts.
 
 ## Code Structure
 The following is the main code structure of cChannel-eth:

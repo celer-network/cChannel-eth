@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity ^0.5.1;
 
 import "../data/PbEntity.sol";
 import "../ledgerlib/LedgerStruct.sol";
@@ -14,6 +14,12 @@ interface ICelerLedger {
 
     function deposit(bytes32 _channelId, address _receiver, uint _transferFromAmount) external payable;
 
+    function depositInBatch(
+        bytes32[] calldata _channelIds,
+        address[] calldata _receivers,
+        uint[] calldata _transferFromAmounts
+    ) external;
+
     function snapshotStates(bytes calldata _signedSimplexStateArray) external;
 
     function intendWithdraw(bytes32 _channelId, uint _amount, bytes32 _recipientChannelId) external;
@@ -26,7 +32,7 @@ interface ICelerLedger {
     
     function intendSettle(bytes calldata _signedSimplexStateArray) external;
     
-    function liquidatePays(bytes32 _channelId, address _peerFrom, bytes calldata _payIdList) external;
+    function clearPays(bytes32 _channelId, address _peerFrom, bytes calldata _payIdList) external;
     
     function confirmSettle(bytes32 _channelId) external;
     
@@ -56,7 +62,7 @@ interface ICelerLedger {
 
     event IntendSettle(bytes32 indexed channelId, uint[2] seqNums);
 
-    event LiquidateOnePay(bytes32 indexed channelId, bytes32 indexed payId, address indexed peerFrom, uint amount);
+    event ClearOnePay(bytes32 indexed channelId, bytes32 indexed payId, address indexed peerFrom, uint amount);
 
     event ConfirmSettle(bytes32 indexed channelId, uint[2] settleBalance);
 
@@ -104,9 +110,9 @@ interface ICelerLedger {
 
     function getBalanceMap(bytes32 _channelId) external view returns(address[2] memory, uint[2] memory, uint[2] memory);
 
-    function getChannelConfig(bytes32 _channelId) external view returns(uint, uint, address, uint);
+    function getChannelMigrationArgs(bytes32 _channelId) external view returns(uint, uint, address, uint);
 
-    function getPeersInfo(bytes32 _channelId) external view returns(
+    function getPeersMigrationInfo(bytes32 _channelId) external view returns(
         address[2] memory,
         uint[2] memory,
         uint[2] memory,
@@ -114,6 +120,34 @@ interface ICelerLedger {
         uint[2] memory,
         uint[2] memory
     );
+
+    function getDisputeTimeout(bytes32 _channelId) external view returns(uint);
+
+    function getMigratedTo(bytes32 _channelId) external view returns(address);
+
+    function getStateSeqNumMap(bytes32 _channelId) external view returns(address[2] memory, uint[2] memory);
+
+    function getTransferOutMap(bytes32 _channelId) external view returns(
+        address[2] memory,
+        uint[2] memory
+    );
+
+    function getNextPayIdListHashMap(bytes32 _channelId) external view returns(
+        address[2] memory,
+        bytes32[2] memory
+    );
+
+    function getLastPayResolveDeadlineMap(bytes32 _channelId) external view returns(
+        address[2] memory,
+        uint[2] memory
+    );
+
+    function getPendingPayOutMap(bytes32 _channelId) external view returns(
+        address[2] memory,
+        uint[2] memory
+    );
+
+    function getWithdrawIntent(bytes32 _channelId) external view returns(address, uint, uint, bytes32);
     /********** End of LedgerChannel related functions and events **********/
 
 

@@ -31,7 +31,7 @@ For more details about cChannel and Celer Network, please refer to [Celer Networ
 * **Payment Destination**: the address receives a payment, namely the destination of this payment route.
 * **Vouched Conditional Payment Result**: the result of a conditional payment agreed by the payment source and payment destination.
 * **PayRegistry**: a global registry which updates and records all payment results.
-* **PayIdList**: data structure including a list of payment ids and a hash pointer to next PayIdList, which is used in Batch Multi-Payment Liquidation.
+* **PayIdList**: data structure including a list of payment ids and a hash pointer to next PayIdList, which is used in Batch Multi-Payment Clearing.
 * **EthPool**: A ETH wrapper to provide ERC20-like APIs for ETH.
 * **Virtual Address Resolver**: establishes the mapping from off-chain address to on-chain address.
 
@@ -54,7 +54,7 @@ For more details about cChannel and Celer Network, please refer to [Celer Networ
 * **Cooperative Dynamic Withdraw**: skips challenge period and withdraws fund before channel finalized when both peers reach an agreement.
 * **Lightweight cooperative on-chain checkpoint**: support snapshotting transfer map of co-signed states on-chain.
 * **Batch Multi-Channel Settlements**: intends to settle multiple channels in one batch with a single on-chain transaction.
-* **Batch Multi-Payment Liquidation**: liquidates *N* payments in one batch with a single on-chain transaction using PayIdList, which only requires O(1) on-chain storage and O(*n*/*N*) on-chain verifications to liquidate *n* payments.
+* **Batch Multi-Payment Clearing**: clears *N* payments in one batch with a single on-chain transaction using PayIdList, which only requires O(1) on-chain storage and O(*n*/*N*) on-chain verifications to clear *n* payments.
 * **Cooperative Settle**: skips challenge period and settles a channel when both peers reach an agreement.
 
 ## Protocol Buffers Usage

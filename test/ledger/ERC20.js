@@ -160,7 +160,7 @@ contract('CelerLedger using ERC20', async accounts => {
 
   it('should fail to deposit before setting deposit limit', async () => {
     // approve first
-    await eRC20ExampleToken.approve(celerWallet.address, 50, { from: peers[0] });
+    await eRC20ExampleToken.approve(instance.address, 50, { from: peers[0] });
 
     try {
       await instance.deposit(channelId, peers[0], 50, { from: peers[0] });
@@ -184,9 +184,36 @@ contract('CelerLedger using ERC20', async accounts => {
     assert.equal(limit.toString(), balanceLimit.toString());
   });
 
-  it('should deposit correctly', async () => {
-    const tx = await instance.deposit(channelId, peers[0], 50, { from: peers[0] });
+  it('should deposit from a peer correctly', async () => {
+    const tx = await instance.deposit(channelId, peers[0], 25, { from: peers[0] });
+    // Gas cost of deposit() varies based on some factors.
+    // The following factors will increase the gas usage of deposit():
+    // 1. the balance depositor has is larger than rather than equal to deposit amount.
+    // 2. the approved amount from depositor is larger than rather than equal to deposit amount.
+    // 3. this is the first rather than second or later deposit after a 0-deposit open channel.
     fs.appendFileSync(GAS_USED_LOG, 'deposit(): ' + getCallGasUsed(tx) + '\n');
+
+    const { event, args } = tx.logs[0];
+    const balanceAmt = await instance.getTotalBalance(channelId);
+    const balanceMap = await instance.getBalanceMap(channelId);
+    const channelPeers = balanceMap[0];
+    const deposits = balanceMap[1];
+    const withdrawals = balanceMap[2];
+
+    assert.equal(event, 'Deposit');
+    assert.deepEqual(args.peerAddrs, peers);
+    assert.equal(args.deposits.toString(), [25, 0]);
+    assert.equal(args.withdrawals.toString(), [0, 0]);
+    assert.equal(balanceAmt.toString(), 25);
+    assert.deepEqual(channelPeers, peers);
+    assert.equal(deposits.toString(), [25, 0]);
+    assert.equal(withdrawals.toString(), [0, 0]);
+  });
+
+  it('should deposit from a non-peer third party correctly', async () => {
+    await eRC20ExampleToken.transfer(accounts[9], 25);
+    await eRC20ExampleToken.approve(instance.address, 25, { from: accounts[9] });
+    const tx = await instance.deposit(channelId, peers[0], 25, { from: accounts[9] });
 
     const { event, args } = tx.logs[0];
     const balanceAmt = await instance.getTotalBalance(channelId);
@@ -206,8 +233,8 @@ contract('CelerLedger using ERC20', async accounts => {
   });
 
   it('should fail to deposit when the new deposit sum exceeds the deposit limit', async () => {
-    await eRC20ExampleToken.approve(celerWallet.address, 50, { from: peers[0] });
-    await eRC20ExampleToken.approve(celerWallet.address, 50, { from: peers[1] });
+    await eRC20ExampleToken.approve(instance.address, 50, { from: peers[0] });
+    await eRC20ExampleToken.approve(instance.address, 50, { from: peers[1] });
     await instance.setBalanceLimits([eRC20ExampleToken.address], [80], { from: accounts[0] });
 
     let errorCounter = 0;
@@ -260,7 +287,7 @@ contract('CelerLedger using ERC20', async accounts => {
 
   it('should fail to intendWithdraw and confirmWithdraw from an ERC20 channel to an ETH channel', async () => {
     // deposit to be only used in withdraw related tests
-    await eRC20ExampleToken.approve(celerWallet.address, 200, { from: peers[0] });
+    await eRC20ExampleToken.approve(instance.address, 200, { from: peers[0] });
     await instance.deposit(channelId, peers[0], 200, { from: peers[0] });
     const balanceMap = await instance.getBalanceMap(channelId);
     const deposits = balanceMap[1];
@@ -488,7 +515,7 @@ contract('CelerLedger using ERC20', async accounts => {
 
   it('should intendSettle correctly', async () => {
     // deposit fund to make the following settle balance correct
-    await eRC20ExampleToken.approve(celerWallet.address, 100, { from: peers[1] });
+    await eRC20ExampleToken.approve(instance.address, 100, { from: peers[1] });
     await instance.deposit(channelId, peers[1], 100, { from: peers[1] });
     const balanceMap = await instance.getBalanceMap(channelId);
     const deposits = balanceMap[1];
@@ -613,8 +640,8 @@ contract('CelerLedger using ERC20', async accounts => {
   });
 
   it('should open a channel correctly when total deposit is larger than zero', async () => {
-    await eRC20ExampleToken.approve(celerWallet.address, 100, { from: peers[0] });
-    await eRC20ExampleToken.approve(celerWallet.address, 200, { from: peers[1] });
+    await eRC20ExampleToken.approve(instance.address, 100, { from: peers[0] });
+    await eRC20ExampleToken.approve(instance.address, 200, { from: peers[1] });
 
     const request = await getOpenChannelRequest({
       openDeadline: uniqueOpenDeadline++,

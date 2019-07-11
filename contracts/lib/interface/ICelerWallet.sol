@@ -8,7 +8,7 @@ interface ICelerWallet {
 
     function depositETH(bytes32 _walletId) external payable;
 
-    function depositERC20(bytes32 _walletId, address _tokenAddress, address _from, uint _amount) external;
+    function depositERC20(bytes32 _walletId, address _tokenAddress, uint _amount) external;
     
     function withdraw(bytes32 _walletId, address _tokenAddress, address _receiver, uint _amount) external;
 
@@ -38,7 +38,7 @@ interface ICelerWallet {
 
     event TransferToWallet(bytes32 indexed fromWalletId, bytes32 indexed toWalletId, address indexed tokenAddress, address receiver, uint amount);
 
-    event UpdateOperator(bytes32 indexed walletId, address indexed oldOperator, address indexed newOperator);
+    event ChangeOperator(bytes32 indexed walletId, address indexed oldOperator, address indexed newOperator);
 
     event ProposeNewOperator(bytes32 indexed walletId, address indexed newOperator, address indexed proposer);
 

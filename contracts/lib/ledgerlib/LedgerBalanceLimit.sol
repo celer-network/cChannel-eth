@@ -8,7 +8,7 @@ import "./LedgerStruct.sol";
  */
 library LedgerBalanceLimit {
     /**
-     * @notice Set the balance limits of given tokens
+     * @notice Set the per-channel balance limits of given tokens
      * @param _self storage data of CelerLedger contract
      * @param _tokenAddrs addresses of the tokens (address(0) is for ETH)
      * @param _limits balance limits of the tokens

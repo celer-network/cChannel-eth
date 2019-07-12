@@ -9,6 +9,8 @@ contract('CelerWallet tests', async accounts => {
     let walletId2;
     let eRC20Token;
     const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const OWNERS = [accounts[2], accounts[3]];
+    const OPERATOR = accounts[4];
 
     before(async () => {
         eRC20Token = await ERC20ExampleToken.new();
@@ -36,14 +38,14 @@ contract('CelerWallet tests', async accounts => {
 
     it('should fail to drainToken when not paused', async () => {
         // create a wallet and deposit funds
-        let tx = await walletHelper.create([accounts[2], accounts[3]], accounts[4], 0);
+        let tx = await walletHelper.create(OWNERS, OPERATOR, 0);
         walletId = tx.logs[0].args.walletId;
-        instance.depositETH(walletId, { from: accounts[4], value: 100 });
+        await instance.depositETH(walletId, { from: OPERATOR, value: 100 });
         await eRC20Token.transfer(accounts[2], 100000, { from: accounts[0] });
         await eRC20Token.approve(instance.address, 100000, { from: accounts[2] });
-        instance.depositERC20(walletId, eRC20Token.address, accounts[2], 200, { from: accounts[4] });
+        await instance.depositERC20(walletId, eRC20Token.address, 200, { from: accounts[2] });
 
-        tx = await walletHelper.create([accounts[2], accounts[3]], accounts[4], 1);
+        tx = await walletHelper.create(OWNERS, OPERATOR, 1);
         walletId2 = tx.logs[0].args.walletId;
 
         let errNum = 0;
@@ -73,7 +75,7 @@ contract('CelerWallet tests', async accounts => {
         let errNum = 0;
 
         try {
-            await walletHelper.create([accounts[2], accounts[3]], accounts[4], 0);
+            await walletHelper.create(OWNERS, OPERATOR, 0);
         } catch (error) {
             // TODO: openzeppelin v2.1.2 doesn't have requrie msg. Need to upgrade it to use this check
             // assert.isAbove(error.message.search('Pausable: paused'), -1);
@@ -87,28 +89,28 @@ contract('CelerWallet tests', async accounts => {
             errNum++;
         }
         try {
-            await instance.depositERC20(walletId, eRC20Token.address, accounts[2], 200, { from: accounts[4] });
+            await instance.depositERC20(walletId, eRC20Token.address, 200, { from: accounts[2] });
         } catch (error) {
             // TODO: openzeppelin v2.1.2 doesn't have requrie msg. Need to upgrade it to use this check
             // assert.isAbove(error.message.search('Pausable: paused'), -1);
             errNum++;
         }
         try {
-            await instance.withdraw(walletId, eRC20Token.address, accounts[2], 200, { from: accounts[4] });
+            await instance.withdraw(walletId, eRC20Token.address, accounts[2], 200, { from: OPERATOR });
         } catch (error) {
             // TODO: openzeppelin v2.1.2 doesn't have requrie msg. Need to upgrade it to use this check
             // assert.isAbove(error.message.search('Pausable: paused'), -1);
             errNum++;
         }
         try {
-            await instance.transferToWallet(walletId, walletId2, eRC20Token.address, accounts[2], 200, { from: accounts[4] });
+            await instance.transferToWallet(walletId, walletId2, eRC20Token.address, accounts[2], 200, { from: OPERATOR });
         } catch (error) {
             // TODO: openzeppelin v2.1.2 doesn't have requrie msg. Need to upgrade it to use this check
             // assert.isAbove(error.message.search('Pausable: paused'), -1);
             errNum++;
         }
         try {
-            await instance.transferOperatorship(walletId, accounts[5], { from: accounts[4] });
+            await instance.transferOperatorship(walletId, accounts[5], { from: OPERATOR });
         } catch (error) {
             // TODO: openzeppelin v2.1.2 doesn't have requrie msg. Need to upgrade it to use this check
             // assert.isAbove(error.message.search('Pausable: paused'), -1);

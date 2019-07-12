@@ -95,35 +95,21 @@ contract CelerWallet is ICelerWallet, Pausable {
      * @notice Deposit ERC20 tokens to a wallet
      * @param _walletId id of the wallet to deposit into
      * @param _tokenAddress address of token to deposit
-     * @param _from token payer
      * @param _amount deposit token amount
      */
     function depositERC20(
         bytes32 _walletId,
         address _tokenAddress,
-        address _from,
         uint _amount
     )
         public
         whenNotPaused
     {
-        if (msg.sender == wallets[_walletId].operator) {
-            require(
-                _isWalletOwner(_walletId, _from) || _from == wallets[_walletId].operator,
-                "Operator can only touch allowance from its owners or itself"
-            );
-        } else {
-            require(
-                _from == msg.sender,
-                "Address other than operator can only touch allowance from itself"
-            );
-        }
         _updateBalance(_walletId, _tokenAddress, _amount, MathOperation.Add);
         emit DepositToWallet(_walletId, _tokenAddress, _amount);
 
-        IERC20(_tokenAddress).safeTransferFrom(_from, address(this), _amount);
+        IERC20(_tokenAddress).safeTransferFrom(msg.sender, address(this), _amount);
     }
-
 
     /**
      * @notice Withdraw funds to an address
@@ -195,12 +181,7 @@ contract CelerWallet is ICelerWallet, Pausable {
         whenNotPaused
         onlyOperator(_walletId)
     {
-        require(_newOperator != address(0), "New operator is address(0)");
-
-        Wallet storage w = wallets[_walletId];
-        address oldOperator = w.operator;
-        w.operator = _newOperator;
-        emit UpdateOperator(_walletId, oldOperator, _newOperator);
+        _changeOperator(_walletId, _newOperator);
     }
 
     /**
@@ -229,9 +210,7 @@ contract CelerWallet is ICelerWallet, Pausable {
         emit ProposeNewOperator(_walletId, _newOperator, msg.sender);
 
         if (_checkAllVotes(w)) {
-            address oldOperator = w.operator;
-            w.operator = _newOperator;
-            emit UpdateOperator(_walletId, oldOperator, _newOperator);
+            _changeOperator(_walletId, _newOperator);
             _clearVotes(w);
         }
     }
@@ -363,6 +342,20 @@ contract CelerWallet is ICelerWallet, Pausable {
         for (uint i = 0; i < _w.owners.length; i++) {
             _w.proposalVotes[_w.owners[i]] = false;
         }
+    }
+
+    /**
+     * @notice Internal function of changing the operator of a wallet
+     * @param _walletId id of wallet to change its operator
+     * @param _newOperator the new operator
+     */
+    function _changeOperator(bytes32 _walletId, address _newOperator) internal {
+        require(_newOperator != address(0), "New operator is address(0)");
+
+        Wallet storage w = wallets[_walletId];
+        address oldOperator = w.operator;
+        w.operator = _newOperator;
+        emit ChangeOperator(_walletId, oldOperator, _newOperator);
     }
 
     /**

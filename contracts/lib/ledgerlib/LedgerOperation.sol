@@ -103,11 +103,15 @@ library LedgerOperation {
             }
         } else if (token.tokenType == PbEntity.TokenType.ERC20) {
             require(msg.value == 0, "msg.value is not 0");
+
+            IERC20 erc20Token = IERC20(token.tokenAddress);
             for (uint i = 0; i < 2; i++) {
-                if (amounts[i] > 0) {
-                    celerWallet.depositERC20(channelId, token.tokenAddress, peerAddrs[i], amounts[i]);
-                }
+                if (amounts[i] == 0) { continue; }
+
+                erc20Token.safeTransferFrom(peerAddrs[i], address(this), amounts[i]);
             }
+            erc20Token.safeApprove(address(celerWallet), amtSum);
+            celerWallet.depositERC20(channelId, address(erc20Token), amtSum);
         } else {
             assert(false);
         }
@@ -150,28 +154,13 @@ library LedgerOperation {
             }
         } else if (c.token.tokenType == PbEntity.TokenType.ERC20) {
             require(msgValue == 0, "msg.value is not 0");
-            address msgSender = msg.sender;
-            if (c._isPeer(msgSender)) {
-                // peer approves to CelerWallet directly
-                _self.celerWallet.depositERC20(
-                    _channelId,
-                    c.token.tokenAddress,
-                    msgSender,
-                    _transferFromAmount
-                );
-            } else {
-                // others have to approve to CelerLedger first and deposit via CelerLedger
-                address tokenAddr = c.token.tokenAddress;
-                address thisAddr = address(this);
-                IERC20(tokenAddr).safeTransferFrom(msgSender, thisAddr, _transferFromAmount);
-                IERC20(tokenAddr).safeApprove(address(_self.celerWallet), _transferFromAmount);
-                _self.celerWallet.depositERC20(
-                    _channelId,
-                    tokenAddr,
-                    thisAddr,
-                    _transferFromAmount
-                );
-            }
+
+            IERC20 erc20Token = IERC20(c.token.tokenAddress);
+            erc20Token.safeTransferFrom(msg.sender, address(this), _transferFromAmount);
+            erc20Token.safeApprove(address(_self.celerWallet), _transferFromAmount);
+            _self.celerWallet.depositERC20(_channelId, address(erc20Token), _transferFromAmount);
+        } else {
+            assert(false);
         }
     }
 
@@ -740,9 +729,9 @@ library LedgerOperation {
         internal
     {
         for (uint i = 0; i < 2; i++) {
-            if (_amounts[i] > 0) {
-                _self.celerWallet.withdraw(_channelId, _tokenAddr, _receivers[i], _amounts[i]);
-            }
+            if (_amounts[i] == 0) { continue; }
+
+            _self.celerWallet.withdraw(_channelId, _tokenAddr, _receivers[i], _amounts[i]);
         }
     }
 

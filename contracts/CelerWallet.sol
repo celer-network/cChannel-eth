@@ -11,6 +11,13 @@ import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
  * @notice A multi-owner, multi-token, operator-centric wallet designed for CelerChannel.
  *   This wallet can run independetly and doesn't rely on trust of any external contracts
  *   even CelerLedger to maximize its security.
+ * @notice Pausable contract and drainToken() function should only be used for handling
+ *   unexpected emergencies in the initial stage of the mainnet operation for a very short
+ *   period of time. The pauser accounts should only call pause() and drainToken() functions
+ *   when some fatal bugs or crucial errors happen in order to ensure the safety of the
+ *   funds stored in CelerWallet. After the system is stable and comprehensively audited,
+ *   all pauser accounts should renounce their pauser roles so that no one will ever be able
+ *   to pause() or drainToken() anymore.
  */
 contract CelerWallet is ICelerWallet, Pausable {
     using SafeMath for uint;
@@ -217,7 +224,7 @@ contract CelerWallet is ICelerWallet, Pausable {
 
     /**
      * @notice Pauser drains one type of tokens when paused
-     * @dev This is for emergency situations.
+     * @notice This is only for emergent situations.
      * @param _tokenAddress address of token to drain
      * @param _receiver token receiver
      * @param _amount drained token amount

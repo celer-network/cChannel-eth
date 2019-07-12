@@ -293,7 +293,13 @@ library LedgerOperation {
         bytes32 recipientChannelId = c.withdrawIntent.recipientChannelId;
         delete c.withdrawIntent;
 
-        // don't need to check balance because intendWithdraw() has already checked withdraw limit
+        // NOTE: for safety reasons, from offchain point of view, only one pending withdraw (including
+        //   both cooperative ones and noncooperative ones) should be allowed at any given time.
+        //   Also note that snapshotStates between an intendWithdraw and a confirmWithdraw won't update
+        //   the withdraw limit calculated in the intendWithdraw.
+        // TODO: move withdrawLimit check from intendWithdraw() to here to check withdraw limit
+        //   with latest states. Yet there are no security issues because CelerWallet will check
+        //   the total balance anyways.
         // this implicitly require receiver be a peer
         c._addWithdrawal(receiver, amount, false);
         
@@ -322,7 +328,7 @@ library LedgerOperation {
     }
 
     /**
-     * @notice Cooperatively withdraw specific amount of deposit
+     * @notice Cooperatively withdraw specific amount of balance
      * @param _self storage data of CelerLedger contract
      * @param _cooperativeWithdrawRequest bytes of cooperative withdraw request message
      */
@@ -491,7 +497,7 @@ library LedgerOperation {
 
     /**
      * @notice Confirm channel settlement
-     * @dev This must be alled after settleFinalizedTime
+     * @dev This must be called after settleFinalizedTime
      * @param _self storage data of CelerLedger contract
      * @param _channelId ID of the channel
      */
@@ -510,10 +516,13 @@ library LedgerOperation {
 
         // require channel status of current intendSettle has been finalized,
         // namely all payments have already been either cleared or expired
-        // TODO: here we should use (lastPayResolveDeadline + clear safe margin)
-        //   instead of lastPayResolveDeadline to avoid race condition between clearPays
-        //   and confirmSettle, which may lead to different settle balance. Add this safe
-        //   margin to the value of lastPayResolveDeadline for now as a temporary solution.
+        // Note: this lastPayResolveDeadline should use
+        //   (the actual last resolve deadline of all pays + clearPays safe margin)
+        //   to ensure that peers have enough time to clearPays before confirmSettle.
+        //   However this only matters if there are multiple blocks of pending pay list
+        //   i.e. the nextPayIdListHash after intendSettle is not bytes32(0).
+        // TODO: add an additional clearSafeMargin param or change the semantics of
+        //   lastPayResolveDeadline to also include clearPays safe margin and rename it.
         require(
             (peerProfiles[0].state.nextPayIdListHash == bytes32(0) ||
                 blockNumber > peerProfiles[0].state.lastPayResolveDeadline) &&

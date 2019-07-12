@@ -63,9 +63,9 @@ library LedgerStruct {
         IEthPool ethPool;
         IPayRegistry payRegistry;
         ICelerWallet celerWallet;
-        // per channel deposit limits for different tokens
+        // per-channel balance limits for different tokens
         mapping(address => uint) balanceLimits;
-        // whether deposit limits of all tokens have been enabled
+        // whether balance limits of all tokens have been enabled
         bool balanceLimitsEnabled;
         mapping(bytes32 => Channel) channelMap;
     }

@@ -13,6 +13,12 @@ import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 /**
  * @title CelerLedger wrapper contract
  * @notice A wrapper contract using libraries to provide CelerLedger's APIs.
+ * @notice Ownable contract and LedgerBalanceLimit library should only be used
+ *   in the initial stage of the mainnet operation for a very short period of
+ *   time to limit the balance amount that can be deposit into each channel,
+ *   so that any losses due to unknown bugs (if any) will be limited. The balance
+ *   limits should be disabled and the owner account of CelerLedger should renounce
+ *   its ownership after the system is stable and comprehensively audited.
  */
 contract CelerLedger is ICelerLedger, Ownable {
     using LedgerOperation for LedgerStruct.Ledger;
@@ -31,14 +37,14 @@ contract CelerLedger is ICelerLedger, Ownable {
         ledger.ethPool = IEthPool(_ethPool);
         ledger.payRegistry = IPayRegistry(_payRegistry);
         ledger.celerWallet = ICelerWallet(_celerWallet);
-        // enable deposit limits in default
+        // enable balance limits in default
         ledger.balanceLimitsEnabled = true;
     }
 
     /**
-     * @notice Set the deposit limits of given tokens
+     * @notice Set the per-channel balance limits of given tokens
      * @param _tokenAddrs addresses of the tokens (address(0) is for ETH)
-     * @param _limits deposit limits of the tokens
+     * @param _limits balance limits of the tokens
      */
     function setBalanceLimits(
         address[] calldata _tokenAddrs,
@@ -51,14 +57,14 @@ contract CelerLedger is ICelerLedger, Ownable {
     }
 
     /**
-     * @notice Disable deposit limits of all tokens
+     * @notice Disable balance limits of all tokens
      */
     function disableBalanceLimits() external onlyOwner {
         ledger.disableBalanceLimits();
     }
 
     /**
-     * @notice Enable deposit limits of all tokens
+     * @notice Enable balance limits of all tokens
      */
     function enableBalanceLimits() external onlyOwner {
         ledger.enableBalanceLimits();
@@ -161,7 +167,7 @@ contract CelerLedger is ICelerLedger, Ownable {
     }
 
     /**
-     * @notice Cooperatively withdraw specific amount of deposit
+     * @notice Cooperatively withdraw specific amount of balance
      * @param _cooperativeWithdrawRequest bytes of cooperative withdraw request message
      */
     function cooperativeWithdraw(bytes calldata _cooperativeWithdrawRequest) external {
@@ -199,7 +205,7 @@ contract CelerLedger is ICelerLedger, Ownable {
 
     /**
      * @notice Confirm channel settlement
-     * @dev This must be alled after settleFinalizedTime
+     * @dev This must be called after settleFinalizedTime
      * @param _channelId ID of the channel
      */
     function confirmSettle(bytes32 _channelId) external {
@@ -326,7 +332,7 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _channelId ID of the channel to be viewed
      * @return peers' addresses
      * @return peers' deposits
-     * @return peers' owedDeposits
+     * @return peers' withdrawals
      * @return peers' state sequence numbers
      * @return peers' transferOut map
      * @return peers' pendingPayOut map
@@ -480,9 +486,9 @@ contract CelerLedger is ICelerLedger, Ownable {
     }
 
     /**
-     * @notice Return deposit limit of given token
+     * @notice Return balance limit of given token
      * @param _tokenAddr query token address
-     * @return token deposit limit
+     * @return token balance limit
      */
     function getBalanceLimit(address _tokenAddr) external view returns(uint) {
         return ledger.getBalanceLimit(_tokenAddr);

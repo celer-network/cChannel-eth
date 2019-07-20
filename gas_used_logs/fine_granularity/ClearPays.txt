@@ -1,22 +1,22 @@
 ********** Gas Measurement of clearPays() multi pays **********
 
 pay number per following payIdList(i.e. except head payIdList),	used gas
-1	38784
-11	127469
-21	216126
-31	304839
-41	393388
-51	482337
-61	570825
-71	659543
-81	748719
-91	836412
-101	925357
-176	1591498
-251	2258460
-326	2925398
-401	3593974
+1	29595
+11	117747
+21	206404
+31	295117
+41	383794
+51	472295
+61	561423
+71	649949
+81	738741
+91	827458
+101	916147
+176	1582416
+251	2248226
+326	2915740
+401	3583868
 
-Linear regression result: gasUsed = 8885.89 * payNumPerList + 28921.84
-Max pay number per following payIdList (i.e. except head payIdList) is: 897
+Linear regression result: gasUsed = 8884.84 * payNumPerList + 19427.96
+Max pay number per following payIdList (i.e. except head payIdList) is: 898
 Coefficient of determination (R^2) is: 1

@@ -11,8 +11,8 @@ import "openzeppelin-solidity/contracts/token/ERC20/ERC20Detailed.sol";
  * `ERC20` functions.
  */
 contract ERC20ExampleToken is ERC20, ERC20Detailed {
-    uint8 public constant DECIMALS = 2;
-    uint256 public constant INITIAL_SUPPLY = 300000;
+    uint8 public constant DECIMALS = 18;
+    uint256 public constant INITIAL_SUPPLY = 1e28;
 
     /**
      * @notice Constructor that gives msg.sender all of existing tokens.

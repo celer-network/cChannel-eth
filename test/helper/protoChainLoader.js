@@ -11,6 +11,7 @@ module.exports = async () => {
   const SignedSimplexState = chain.lookupType("chain.SignedSimplexState");
   const SignedSimplexStateArray = chain.lookupType("chain.SignedSimplexStateArray");
   const ResolvePayByConditionsRequest = chain.lookupType("chain.ResolvePayByConditionsRequest");
+  const ChannelMigrationRequest = chain.lookupType("chain.ChannelMigrationRequest");
 
   const PaymentChannelInitializer = entity.lookupType("entity.PaymentChannelInitializer");
   const TokenDistribution = entity.lookupType("entity.TokenDistribution");
@@ -26,6 +27,7 @@ module.exports = async () => {
   const Condition = entity.lookupType("entity.Condition");
   const CooperativeSettleInfo = entity.lookupType("entity.CooperativeSettleInfo");
   const PayIdList = entity.lookupType("entity.PayIdList");
+  const ChannelMigrationInfo = entity.lookupType("entity.ChannelMigrationInfo");
 
   return {
     // chain
@@ -33,6 +35,7 @@ module.exports = async () => {
     CooperativeWithdrawRequest,
     CooperativeSettleRequest,
     ResolvePayByConditionsRequest,
+    ChannelMigrationRequest,
 
     // entity
     PaymentChannelInitializer,
@@ -50,6 +53,7 @@ module.exports = async () => {
     VouchedCondPayResult,
     Condition,
     CooperativeSettleInfo,
-    PayIdList
+    PayIdList,
+    ChannelMigrationInfo
   }
 }

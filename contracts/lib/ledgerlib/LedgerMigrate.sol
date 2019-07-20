@@ -81,6 +81,8 @@ library LedgerMigrate {
         );
 
         _self._updateChannelStatus(c, LedgerStruct.ChannelStatus.Operable);
+        // Do not migrate WithdrawIntent, in other words, migration will implicitly veto
+        // pending WithdrawIntent if any.
         c._importChannelMigrationArgs(fromLedgerAddrPayable, channelId);
         c._importPeersMigrationInfo(fromLedgerAddrPayable, channelId);
 

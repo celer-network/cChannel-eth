@@ -241,24 +241,13 @@ library LedgerOperation {
         external
     {
         LedgerStruct.Channel storage c = _self.channelMap[_channelId];
-        LedgerStruct.PeerProfile[2] storage peerProfiles = c.peerProfiles;
         LedgerStruct.WithdrawIntent storage withdrawIntent = c.withdrawIntent;
         address receiver = msg.sender;
         require(c.status == LedgerStruct.ChannelStatus.Operable, "Channel status error");
         // withdrawIntent.receiver is address(0) if and only if there is no pending WithdrawIntent,
         // because withdrawIntent.receiver may only be set as msg.sender which can't be address(0).
         require(withdrawIntent.receiver == address(0), "Pending withdraw intent exists");
-
-        // check withdraw limit
-        // this implicitly requires receiver be a peer
-        uint rid = c._getPeerId(receiver);
-        uint pid = uint(1).sub(rid);
-        uint withdrawLimit = peerProfiles[rid].deposit
-            .add(peerProfiles[pid].state.transferOut)
-            .sub(peerProfiles[rid].withdrawal)
-            .sub(peerProfiles[rid].state.transferOut)
-            .sub(peerProfiles[rid].state.pendingPayOut);
-        require(_amount <= withdrawLimit, "Exceed withdraw limit");
+        require(c._isPeer(receiver));
 
         withdrawIntent.receiver = receiver;
         withdrawIntent.amount = _amount;
@@ -293,15 +282,18 @@ library LedgerOperation {
         bytes32 recipientChannelId = c.withdrawIntent.recipientChannelId;
         delete c.withdrawIntent;
 
-        // NOTE: for safety reasons, from offchain point of view, only one pending withdraw (including
-        //   both cooperative ones and noncooperative ones) should be allowed at any given time.
-        //   Also note that snapshotStates between an intendWithdraw and a confirmWithdraw won't update
-        //   the withdraw limit calculated in the intendWithdraw.
-        // TODO: move withdrawLimit check from intendWithdraw() to here to check withdraw limit
-        //   with latest states. Yet there are no security issues because CelerWallet will check
-        //   the total balance anyways.
-        // this implicitly require receiver be a peer
-        c._addWithdrawal(receiver, amount, false);
+        // check withdraw limit
+        uint rid = c._getPeerId(receiver);
+        uint pid = uint(1).sub(rid);
+        LedgerStruct.PeerProfile[2] storage peerProfiles = c.peerProfiles;
+        uint withdrawLimit = peerProfiles[rid].deposit
+            .add(peerProfiles[pid].state.transferOut)
+            .sub(peerProfiles[rid].withdrawal)
+            .sub(peerProfiles[rid].state.transferOut)
+            .sub(peerProfiles[rid].state.pendingPayOut);
+        require(amount <= withdrawLimit, "Exceed withdraw limit");
+
+        c._addWithdrawal(receiver, amount);
         
         (, uint[2] memory deposits, uint[2] memory withdrawals) = c.getBalanceMap();
         emit ConfirmWithdraw(_channelId, amount, receiver, recipientChannelId, deposits, withdrawals);
@@ -364,7 +356,7 @@ library LedgerOperation {
         uint amount = withdrawInfo.withdraw.amt;
 
         // this implicitly require receiver be a peer
-        c._addWithdrawal(receiver, amount, true);
+        c._addWithdrawal(receiver, amount);
 
         (, uint[2] memory deposits, uint[2] memory withdrawals) = c.getBalanceMap();
         emit CooperativeWithdraw(
@@ -433,12 +425,18 @@ library LedgerOperation {
                 }
 
                 // update simplexState-dependent fields
-                // no need to update pendingPayOut since channel settle process doesn't use it
                 state.seqNum = simplexState.seqNum;
                 state.transferOut = simplexState.transferToPeer.receiver.amt;
                 state.nextPayIdListHash = simplexState.pendingPayIds.nextListHash;
                 state.lastPayResolveDeadline = simplexState.lastPayResolveDeadline;
-                _clearPays(_self, currentChannelId, peerFromId, simplexState.pendingPayIds.payIds);
+                // updating pendingPayOut is only needed when migrating ledger during settling phrase, which will
+                // affect the withdraw limit after the migration.
+                // if nextListHash is bytes32(0), state.pendingPayOut will be set as 0 by _clearPays()
+                if (simplexState.pendingPayIds.nextListHash != bytes32(0)) {
+                    state.pendingPayOut = simplexState.totalPendingAmount;
+                }
+
+                _clearPays(_self, currentChannelId, peerFromId, simplexState.pendingPayIds);
             } else if (simplexState.seqNum == 0) {  // null state
                 // this implies both stored seqNums are 0
                 require(c.settleFinalizedTime == 0, "intendSettle before");
@@ -492,7 +490,7 @@ library LedgerOperation {
 
         PbEntity.PayIdList memory payIdList = PbEntity.decPayIdList(_payIdList);
         state.nextPayIdListHash = payIdList.nextListHash;
-        _clearPays(_self, _channelId, peerFromId, payIdList.payIds);
+        _clearPays(_self, _channelId, peerFromId, payIdList);
     }
 
     /**
@@ -810,29 +808,44 @@ library LedgerOperation {
      * @param _self storage data of CelerLedger contract
      * @param _channelId the channel ID
      * @param _peerId ID of the peer who sends out funds
-     * @param _payIds array of pay ids to clear
+     * @param _payIdList payIdList to clear
      */
     function _clearPays(
         LedgerStruct.Ledger storage _self,
         bytes32 _channelId,
         uint _peerId,
-        bytes32[] memory _payIds
+        PbEntity.PayIdList memory _payIdList
     )
         internal
     {
         LedgerStruct.Channel storage c = _self.channelMap[_channelId];
         uint[] memory outAmts = _self.payRegistry.getPayAmounts(
-            _payIds,
+            _payIdList.payIds,
             c.peerProfiles[_peerId].state.lastPayResolveDeadline
         );
 
         uint totalAmtOut = 0;
         for (uint i = 0; i < outAmts.length; i++) {
             totalAmtOut = totalAmtOut.add(outAmts[i]);
-            emit ClearOnePay(_channelId, _payIds[i], c.peerProfiles[_peerId].peerAddr, outAmts[i]);
+            emit ClearOnePay(_channelId, _payIdList.payIds[i], c.peerProfiles[_peerId].peerAddr, outAmts[i]);
         }
         c.peerProfiles[_peerId].state.transferOut =
             c.peerProfiles[_peerId].state.transferOut.add(totalAmtOut);
+        // updating pendingPayOut is only needed when migrating ledger during settling phrase, which will
+        // affect the withdraw limit after the migration.
+        if (_payIdList.nextListHash == bytes32(0)) {
+            // if there are no more uncleared pays in this state, the pendingPayOut must be 0
+            c.peerProfiles[_peerId].state.pendingPayOut = 0;
+        } else {
+            // Note: if there are more uncleared pays in this state, because resolved pay amount
+            //   is always less than or equal to the corresponding maximum amount counted in
+            //   pendingPayOut, the updated pendingPayOut may be equal to or larger than the real
+            //   pendingPayOut. This will lead to decreasing the maximum withdraw amount (withdrawLimit)
+            //   of the peer in non-cooperative withdraw flow, but protect the fund in the channel
+            //   from potentially malicious non-cooperative withdraw.
+            c.peerProfiles[_peerId].state.pendingPayOut =
+                c.peerProfiles[_peerId].state.pendingPayOut.sub(totalAmtOut);
+        }
     }
 
     /**

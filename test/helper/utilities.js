@@ -72,11 +72,25 @@ function calculatePayId(payHashHex, setterAddr) {
   return web3.utils.keccak256(payHashBytes.concat(setterAddrBytes));
 }
 
+function uint2bytes(x) {
+  if (x < 0) {
+    throw "Input number is less than 0!";
+  }
+
+  var bytes = [];
+  do {
+    bytes.push(x & 255);
+    x = x >> 8;
+  } while (x)
+  return bytes.reverse();
+}
+
 module.exports = {
-  getDeployGasUsed: getDeployGasUsed,
-  getCallGasUsed: getCallGasUsed,
-  mineBlockUntil: mineBlockUntil,
-  getSortedArray: getSortedArray,
-  getCoSignedIntendSettle: getCoSignedIntendSettle,
-  calculatePayId: calculatePayId
+  getDeployGasUsed,
+  getCallGasUsed,
+  mineBlockUntil,
+  getSortedArray,
+  getCoSignedIntendSettle,
+  calculatePayId,
+  uint2bytes
 }

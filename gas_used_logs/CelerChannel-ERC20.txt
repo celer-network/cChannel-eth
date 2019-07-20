@@ -3,21 +3,21 @@
 ***** Deploy Gas Used *****
 VirtContractResolver Deploy Gas: 322859
 PayRegistry Deploy Gas: 835393
-PayResolver Deploy Gas: 2888558
-CelerWallet Deploy Gas: 2149622
-CelerLedger Deploy Gas: 3059848
+PayResolver Deploy Gas: 2860785
+CelerWallet Deploy Gas: 1687220
+CelerLedger Deploy Gas: 2953316
 
 ***** Function Calls Gas Used *****
-openChannel() with zero deposit: 332704
+openChannel() with zero deposit: 332778
 setBalanceLimits(): 47681
-deposit(): 163592
+deposit(): 161333
 disableBalanceLimits(): 14441
-intendWithdraw(): 302660
-confirmWithdraw(): 83931
-cooperativeWithdraw(): 142954
-intendSettle() with two 2-payment-hashList states: 412691
-clearPays() with 2 payments: 47962
-confirmSettle(): 97397
-openChannel() with non-zero ERC20 deposits: 413727
-cooperativeWithdraw(): 148010
-cooperativeSettle(): 146433
+intendWithdraw(): 302694
+confirmWithdraw(): 87166
+cooperativeWithdraw(): 143028
+intendSettle() with two 2-payment-hashList states: 463871
+clearPays() with 2 payments: 38368
+confirmSettle(): 95945
+openChannel() with non-zero ERC20 deposits: 410669
+cooperativeWithdraw(): 147250
+cooperativeSettle(): 145099

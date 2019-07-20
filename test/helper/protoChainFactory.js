@@ -6,7 +6,7 @@ const protoChainLoader = require('./protoChainLoader');
 const { signMessage } = require('./sign');
 
 const utilities = require('./utilities');
-const { calculatePayId } = utilities;
+const { calculatePayId, uint2bytes } = utilities;
 
 const BooleanCondMock = artifacts.require('BooleanCondMock');
 const NumericCondMock = artifacts.require('NumericCondMock');
@@ -44,7 +44,9 @@ module.exports = async (peers, clients) => {
     CooperativeSettleInfo,
     CooperativeSettleRequest,
     ResolvePayByConditionsRequest,
-    PayIdList
+    PayIdList,
+    ChannelMigrationRequest,
+    ChannelMigrationInfo
   } = protoChain;
 
   /********** constant vars **********/
@@ -83,7 +85,8 @@ module.exports = async (peers, clients) => {
   // get the list of PayIdList bytes and the list of PayBytes array in a simplex state
   const getPayIdListInfo = ({
     payAmounts,  // an array of pay amount list of linked pay id list; from head to tail
-    payResolverAddr
+    payResolverAddr,
+    payConditions = null
   }) => {
     // 1-d array of PayIdList proto
     let payIdListProtos = [];
@@ -104,11 +107,22 @@ module.exports = async (peers, clients) => {
       let payIds = [];
       for (j = 0; j < payAmounts[i].length; j++) {
         totalPendingAmount += payAmounts[i][j];
+        let conditions;
+        if (payConditions == null) {
+          // use true condition by default
+          conditions = [Condition.create(conditionDeployedTrue)];
+        } else {
+          if (payConditions[i][j]) {
+            conditions = [Condition.create(conditionDeployedTrue)];
+          } else {
+            conditions = [Condition.create(conditionDeployedFalse)];
+          }
+        }
         payBytesArray[i][j] = getConditionalPayBytes({
           payTimestamp: Math.floor(Math.random() * 10000000000),
           paySrc: clients[i],
           payDest: clients[1 - i],
-          conditions: [Condition.create(conditionDeployedTrue)],
+          conditions: conditions,
           maxAmount: payAmounts[i][j],
           payResolver: payResolverAddr
         });
@@ -149,7 +163,7 @@ module.exports = async (peers, clients) => {
   }) => {
     const condPayResult = {
       condPay: condPay,
-      amount: [amount]
+      amount: uint2bytes(amount)
     }
     const condPayResultProto = CondPayResult.create(condPayResult);
     const condPayResultBytes = CondPayResult.encode(condPayResultProto)
@@ -282,7 +296,7 @@ module.exports = async (peers, clients) => {
   }) => {
     const withdraw = {
       account: web3.utils.hexToBytes(receiverAccount),
-      amt: [amount]
+      amt: uint2bytes(amount)
     };
     const withdrawProto = AccountAmtPair.create(withdraw);
 
@@ -401,6 +415,40 @@ module.exports = async (peers, clients) => {
       .toJSON().data;
   }
 
+  const getMigrationRequest = async ({
+    channelId,
+    fromLedgerAddress,
+    toLedgerAddress,
+    migrationDeadline,
+    channelPeers = peers
+  }) => {
+    const migrationInfo = {
+      channelId: web3.utils.hexToBytes(channelId),
+      fromLedgerAddress: web3.utils.hexToBytes(fromLedgerAddress),
+      toLedgerAddress: web3.utils.hexToBytes(toLedgerAddress),
+      migrationDeadline: migrationDeadline
+    }
+    const migrationInfoProto = ChannelMigrationInfo.create(migrationInfo);
+    const migrationInfoBytes = ChannelMigrationInfo.encode(migrationInfoProto)
+      .finish()
+      .toJSON().data;
+
+    const sigs = await getAllSignatures({
+      messageBytes: migrationInfoBytes,
+      signPeers: channelPeers
+    });
+
+    let migrationRequest = {
+      channelMigrationInfo: migrationInfoBytes,
+      sigs: sigs
+    }
+
+    const migrationRequestProto = ChannelMigrationRequest.create(migrationRequest);
+    return ChannelMigrationRequest.encode(migrationRequestProto)
+      .finish()
+      .toJSON().data;
+  }
+
   /********** internal API **********/
   // get bytes of PaymentChannelInitializer
   const getPaymentChannelInitializerBytes = ({
@@ -475,10 +523,10 @@ module.exports = async (peers, clients) => {
     if (account != null) {
       accountAmtPair = {
         account: web3.utils.hexToBytes(account),
-        amt: [amount]
+        amt: uint2bytes(amount)
       };
     } else {
-      accountAmtPair = { amt: [amount] };
+      accountAmtPair = { amt: uint2bytes(amount) };
     }
     const accountAmtPairProto = AccountAmtPair.create(accountAmtPair);
 
@@ -501,11 +549,11 @@ module.exports = async (peers, clients) => {
   }) => {
     accountAmtPair0 = {
       account: web3.utils.hexToBytes(accounts[0]),
-      amt: [amounts[0]]
+      amt: uint2bytes(amounts[0])
     };
     accountAmtPair1 = {
       account: web3.utils.hexToBytes(accounts[1]),
-      amt: [amounts[1]]
+      amt: uint2bytes(amounts[1])
     };
 
     return [
@@ -561,7 +609,7 @@ module.exports = async (peers, clients) => {
       transferToPeer: transferToPeerProto,
       pendingPayIds: pendingPayIds,
       lastPayResolveDeadline: lastPayResolveDeadline,
-      totalPendingAmount: totalPendingAmount
+      totalPendingAmount: uint2bytes(totalPendingAmount)
     };
     const simplexPaymentChannelProto = SimplexPaymentChannel.create(simplexPaymentChannel);
     const simplexPaymentChannelBytes = SimplexPaymentChannel.encode(simplexPaymentChannelProto)
@@ -647,6 +695,7 @@ module.exports = async (peers, clients) => {
     getResolvePayByConditionsRequestBytes,
     getConditions,
     getVouchedCondPayResultBytes,  // async
-    getPayIdListInfo
+    getPayIdListInfo,
+    getMigrationRequest  // async
   };
 };

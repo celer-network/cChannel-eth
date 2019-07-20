@@ -1,12 +1,12 @@
 ********** Gas Measurement of depositInBatch() **********
 
 batch size,	used gas
-1	161938
-11	1398046
-21	2633834
-31	3870006
-41	5105602
+1	159679
+11	1373133
+21	2586267
+31	3799721
+41	5012535
 
-Linear regression result: gasUsed = 123592.88 * batchSize + 38434.72
-Max batch size of deposit ERC20 in batch is: 64
+Linear regression result: gasUsed = 121323 * batchSize + 38484
+Max batch size of deposit ERC20 in batch is: 65
 Coefficient of determination (R^2) is: 1

@@ -33,6 +33,7 @@ const PayResolver = artifacts.require('PayResolver');
 contract('CelerLedger using ETH', async accounts => {
   const ZERO_CHANNELID = "0x0000000000000000000000000000000000000000000000000000000000000000";
   const ETH_ADDR = '0x0000000000000000000000000000000000000000';
+  const ZERO_ADDR = ETH_ADDR;
   const DISPUTE_TIMEOUT = 20;
   const GAS_USED_LOG = 'gas_used_logs/CelerChannel-ETH.txt';
   // the meaning of the index: [peer index][pay hash list index][pay index]
@@ -560,9 +561,11 @@ contract('CelerLedger using ETH', async accounts => {
     const tx = await instance.vetoWithdraw(channelId, { from: peers[1] });
     const { event, args } = tx.logs[0];
     fs.appendFileSync(GAS_USED_LOG, 'vetoWithdraw(): ' + getCallGasUsed(tx) + '\n');
+    const withdrawIntent = await instance.getWithdrawIntent(channelId);
 
     assert.equal(event, 'VetoWithdraw');
     assert.equal(args.channelId, channelId);
+    assert.equal(withdrawIntent[0], ZERO_ADDR);
   });
 
   it('should fail to confirmWithdraw after vetoWithdraw', async () => {
@@ -1091,6 +1094,12 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(tx.logs[4].event, 'IntendSettle');
     assert.equal(tx.logs[4].args.channelId, channelId);
     assert.equal(tx.logs[4].args.seqNums.toString(), [1, 1]);
+
+    const peersMigrationInfo = await instance.getPeersMigrationInfo(channelId);
+    // updated transferOut map with cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[4].toString(), [10 + 1 + 2, 20 + 5 + 6]);
+    // updated pendingPayOut map without cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[5].toString(), [3 + 4, 7 + 8]);
   });
 
   it('should fail to clearPays when payments are not finalized before last pay resolve deadline', async () => {
@@ -1289,7 +1298,6 @@ contract('CelerLedger using ETH', async accounts => {
     const { event, args } = tx.logs[0];
 
     assert.equal(event, 'ConfirmSettle');
-    // also include the owedDeposits
     assert.equal(args.settleBalance.toString(), [86, 114]);
     assert.equal(status, 3);
   });
@@ -1440,6 +1448,12 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(tx.logs[4].event, 'IntendSettle');
     assert.equal(tx.logs[4].args.channelId, channelId);
     assert.equal(tx.logs[4].args.seqNums.toString(), [1, 1]);
+
+    const peersMigrationInfo = await instance.getPeersMigrationInfo(channelId);
+    // updated transferOut map with cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[4].toString(), [10, 20]);
+    // updated pendingPayOut map without cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[5].toString(), [1 + 2 + 3 + 4, 5 + 6 + 7 + 8]);
   });
 
   it('should confirmSettle correctly when pay proof type is HashArray and time is after last pay resolve deadline', async () => {
@@ -1492,6 +1506,12 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(event, 'IntendSettle');
     assert.equal(args.channelId, channelId);
     assert.equal(args.seqNums.toString(), [0, 0]);
+
+    const peersMigrationInfo = await instance.getPeersMigrationInfo(channelId);
+    // updated transferOut map with cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[4].toString(), [0, 0]);
+    // updated pendingPayOut map without cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[5].toString(), [0, 0]);
   });
 
   it('should fail to intendSettle with 0 payment (null state) again', async () => {
@@ -1585,6 +1605,12 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(tx.logs[2].event, 'IntendSettle');
     assert.equal(tx.logs[2].args.channelId, channelId);
     assert.equal(tx.logs[2].args.seqNums.toString(), [5, 0]);
+
+    const peersMigrationInfo = await instance.getPeersMigrationInfo(channelId);
+    // updated transferOut map with cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[4].toString(), [10 + 1 + 2, 0]);
+    // updated pendingPayOut map without cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[5].toString(), [0, 0]);
   });
 
   it('should confirmSettle correctly with one non-null simplex state', async () => {
@@ -1733,7 +1759,7 @@ contract('CelerLedger using ETH', async accounts => {
     }
   });
 
-  it('should fail to intendWithdraw more funds than withdraw limit', async () => {
+  it('should fail to confirmWithdraw more funds than withdraw limit', async () => {
     // open a new channel and deposit some funds
     const request = await getOpenChannelRequest({
       openDeadline: uniqueOpenDeadline++,
@@ -1747,13 +1773,20 @@ contract('CelerLedger using ETH', async accounts => {
     await instance.deposit(channelId, peers[0], 0, { value: 50 });
     await instance.deposit(channelId, peers[1], 0, { value: 150 });
 
+    await instance.intendWithdraw(channelId, 200, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
+
     try {
-      await instance.intendWithdraw(channelId, 200, ZERO_CHANNELID, { from: peers[0] });
+      await instance.confirmWithdraw(channelId, { from: peers[0] });
     } catch (error) {
       assert.isAbove(
         error.message.search('Exceed withdraw limit'),
         -1
       );
+
+      // veto the withdraw intent of this test for future tests
+      await instance.vetoWithdraw(channelId, { from: peers[0] });
       return;
     }
 
@@ -1816,29 +1849,40 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(withdrawals.toString(), [100, 0]);
   });
 
-  it('should fail to intendWithdraw more funds than updated withdraw limit', async () => {
+  it('should fail to confirmWithdraw more funds than updated withdraw limit', async () => {
+    await instance.intendWithdraw(channelId, 100, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
+
     try {
-      await instance.intendWithdraw(channelId, 100, ZERO_CHANNELID, { from: peers[0] });
+      await instance.confirmWithdraw(channelId, { from: peers[0] });
     } catch (error) {
       assert.isAbove(
         error.message.search('Exceed withdraw limit'),
         -1
       );
+
+      // veto the withdraw intent of this test
+      await instance.vetoWithdraw(channelId, { from: peers[0] });
       return;
     }
 
     assert.fail('should have thrown before');
   });
 
-  it('should intendWithdraw correctly for funds within the updated withdraw limit', async () => {
-    tx = await instance.intendWithdraw(channelId, 50, ZERO_CHANNELID, { from: peers[0] });
-    assert.equal(tx.logs[0].event, 'IntendWithdraw');
-    assert.equal(tx.logs[0].args.channelId, channelId);
-    assert.equal(tx.logs[0].args.receiver, peers[0]);
-    assert.equal(tx.logs[0].args.amount.toString(), 50);
+  it('should confirmWithdraw correctly for funds within the updated withdraw limit', async () => {
+    await instance.intendWithdraw(channelId, 50, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
 
-    // veto current withdraw intent for future tests
-    await instance.vetoWithdraw(channelId, { from: peers[1] });
+    const tx = await instance.confirmWithdraw(channelId, { from: peers[0] });
+    assert.equal(tx.logs[0].event, 'ConfirmWithdraw');
+    assert.equal(tx.logs[0].args.channelId, channelId);
+    assert.equal(tx.logs[0].args.withdrawnAmount.toString(), 50);
+    assert.equal(tx.logs[0].args.receiver, peers[0]);
+    assert.equal(tx.logs[0].args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(tx.logs[0].args.deposits.toString(), [50, 150]);
+    assert.equal(tx.logs[0].args.withdrawals.toString(), [150, 0]);
   });
 
   it('should fail to intendSettle with a smaller seqNum than snapshot', async () => {
@@ -1846,7 +1890,7 @@ contract('CelerLedger using ETH', async accounts => {
       payAmounts: [[2, 4]],
       payResolverAddr: payResolver.address
     });
-    const signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
+    const localSignedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
       channelIds: [channelId],
       seqNums: [4],
       transferAmounts: [10],
@@ -1857,7 +1901,7 @@ contract('CelerLedger using ETH', async accounts => {
     });
 
     try {
-      await instance.intendSettle(signedSimplexStateArrayBytes);
+      await instance.intendSettle(localSignedSimplexStateArrayBytes);
     } catch (error) {
       assert.isAbove(
         error.message.search('seqNum error'),
@@ -1908,6 +1952,12 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(tx.logs[2].event, 'IntendSettle');
     assert.equal(tx.logs[2].args.channelId, channelId);
     assert.equal(tx.logs[2].args.seqNums.toString(), [0, 5]);
+
+    const peersMigrationInfo = await instance.getPeersMigrationInfo(channelId);
+    // updated transferOut map with cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[4].toString(), [0, 100 + 1 + 2]);
+    // updated pendingPayOut map without cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[5].toString(), [0, 0]);
   });
 
   it('should fail to intendWithdraw after intendSettle', async () => {
@@ -2019,6 +2069,267 @@ contract('CelerLedger using ETH', async accounts => {
       assert.equal(tx.logs[i].args.deposits.toString(), expectedDeposits);
       assert.equal(tx.logs[i].args.withdrawals.toString(), [0, 0]);
     }
+  });
+
+  it('should fail to confirmWithdraw after withdraw limit is updated by cooperativeWithdraw', async () => {
+    // open a new channel and deposit some funds
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT,
+      zeroTotalDeposit: true
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    const tx = await instance.openChannel(openChannelRequest);
+    channelId = tx.logs[0].args.channelId.toString();
+
+    await instance.deposit(channelId, peers[0], 0, { value: 50 });
+    await instance.deposit(channelId, peers[1], 0, { value: 150 });
+
+    await instance.intendWithdraw(channelId, 45, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
+
+    // cooperativeWithdraw 10 to peer 0
+    const cooperativeWithdrawRequestBytes = await getCooperativeWithdrawRequestBytes({
+      channelId: channelId,
+      amount: 10
+    });
+    const cooperativeWithdrawRequest =
+      web3.utils.bytesToHex(cooperativeWithdrawRequestBytes);
+    await instance.cooperativeWithdraw(cooperativeWithdrawRequest);
+
+    try {
+      await instance.confirmWithdraw(channelId, { from: peers[0] });
+    } catch (error) {
+      assert.isAbove(
+        error.message.search('Exceed withdraw limit'),
+        -1
+      );
+
+      // veto the withdraw intent of this test for future tests
+      await instance.vetoWithdraw(channelId, { from: peers[0] });
+      return;
+    }
+
+    assert.fail('should have thrown before');
+  });
+
+  it('should fail to confirmWithdraw after withdraw limit is updated by snapshotStates with its own state', async () => {
+    // open a new channel and deposit some funds
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT,
+      zeroTotalDeposit: true
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    const tx = await instance.openChannel(openChannelRequest);
+    channelId = tx.logs[0].args.channelId.toString();
+
+    await instance.deposit(channelId, peers[0], 0, { value: 50 });
+    await instance.deposit(channelId, peers[1], 0, { value: 150 });
+
+    await instance.intendWithdraw(channelId, 35, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
+
+    // snapshotStates: peer 0 transfers out 10; pending amount 10
+    payIdListInfo = getPayIdListInfo({
+      payAmounts: [[5, 5]],
+      payResolverAddr: payResolver.address
+    });
+    signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
+      channelIds: [channelId],
+      seqNums: [5],
+      transferAmounts: [10],
+      lastPayResolveDeadlines: [9999999],
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
+      peerFroms: [peers[0]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
+    });
+    await instance.snapshotStates(signedSimplexStateArrayBytes);
+
+    try {
+      await instance.confirmWithdraw(channelId, { from: peers[0] });
+    } catch (error) {
+      assert.isAbove(
+        error.message.search('Exceed withdraw limit'),
+        -1
+      );
+
+      // veto the withdraw intent of this test for future tests
+      await instance.vetoWithdraw(channelId, { from: peers[0] });
+      return;
+    }
+
+    assert.fail('should have thrown before');
+  });
+
+  it('should confirmWithdraw successfully after withdraw limit is updated by snapshotStates with peer\'s state', async () => {
+    // open a new channel and deposit some funds
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT,
+      zeroTotalDeposit: true
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    let tx = await instance.openChannel(openChannelRequest);
+    channelId = tx.logs[0].args.channelId.toString();
+
+    await instance.deposit(channelId, peers[0], 0, { value: 50 });
+    await instance.deposit(channelId, peers[1], 0, { value: 150 });
+
+    await instance.intendWithdraw(channelId, 60, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
+
+    // snapshotStates: peer 0 transfers out 10; pending amount 10
+    payIdListInfo = getPayIdListInfo({
+      payAmounts: [[1, 2]],
+      payResolverAddr: payResolver.address
+    });
+    signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
+      channelIds: [channelId],
+      seqNums: [5],
+      transferAmounts: [10],
+      lastPayResolveDeadlines: [9999999],
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
+      peerFroms: [peers[1]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
+    });
+    await instance.snapshotStates(signedSimplexStateArrayBytes);
+
+    tx = await instance.confirmWithdraw(channelId, { from: accounts[9] });
+    const { event, args } = tx.logs[0];
+
+    assert.equal(event, 'ConfirmWithdraw');
+    assert.equal(args.channelId, channelId);
+    assert.equal(args.withdrawnAmount.toString(), 60);
+    assert.equal(args.receiver, peers[0]);
+    assert.equal(args.recipientChannelId, ZERO_CHANNELID);
+    assert.equal(args.deposits.toString(), [50, 150]);
+    assert.equal(args.withdrawals.toString(), [60, 0]);
+  });
+
+  it('should fail to confirmWithdraw amount including peer\'s totalPendingAmount after withdraw limit is updated by snapshotStates with peer\'s state', async () => {
+    // open a new channel and deposit some funds
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT,
+      zeroTotalDeposit: true
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    const tx = await instance.openChannel(openChannelRequest);
+    channelId = tx.logs[0].args.channelId.toString();
+
+    await instance.deposit(channelId, peers[0], 0, { value: 50 });
+    await instance.deposit(channelId, peers[1], 0, { value: 150 });
+
+    await instance.intendWithdraw(channelId, 65, ZERO_CHANNELID, { from: peers[0] });
+    const block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + DISPUTE_TIMEOUT, accounts[0]);
+
+    // snapshotStates: peer 0 transfers out 10; pending amount 10
+    payIdListInfo = getPayIdListInfo({
+      payAmounts: [[5, 5]],
+      payResolverAddr: payResolver.address
+    });
+    signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
+      channelIds: [channelId],
+      seqNums: [5],
+      transferAmounts: [10],
+      lastPayResolveDeadlines: [9999999],
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
+      peerFroms: [peers[1]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
+    });
+    await instance.snapshotStates(signedSimplexStateArrayBytes);
+
+    try {
+      await instance.confirmWithdraw(channelId, { from: peers[0] });
+    } catch (error) {
+      assert.isAbove(
+        error.message.search('Exceed withdraw limit'),
+        -1
+      );
+
+      // veto the withdraw intent of this test for future tests
+      await instance.vetoWithdraw(channelId, { from: peers[0] });
+      return;
+    }
+
+    assert.fail('should have thrown before');
+  });
+
+  it('should update the pendingPayOut to 0 correctly when intendSettle a state with only one pay id list', async () => {
+    // open a new channel
+    await ethPool.approve(instance.address, 200, { from: peers[1] });
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    let tx = await instance.openChannel(openChannelRequest, { value: 100 });
+    channelId = tx.logs[0].args.channelId.toString();
+
+    const payIdListInfo = getPayIdListInfo({
+      payAmounts: [[1, 2]],
+      payResolverAddr: payResolver.address,
+      payConditions: [[false, false]]
+    });
+    const signedSimplexStateArrayBytes = await getSignedSimplexStateArrayBytes({
+      channelIds: [channelId],
+      seqNums: [5],
+      lastPayResolveDeadlines: [999999],
+      payIdLists: [payIdListInfo.payIdListProtos[0]],
+      transferAmounts: [10],
+      peerFroms: [peers[0]],
+      totalPendingAmounts: [payIdListInfo.totalPendingAmount]
+    });
+
+    // resolve the payments in head PayIdList
+    for (let i = 0; i < payIdListInfo.payBytesArray[0].length; i++) {
+      const requestBytes = getResolvePayByConditionsRequestBytes({
+        condPayBytes: payIdListInfo.payBytesArray[0][i]
+      });
+      await payResolver.resolvePaymentByConditions(requestBytes);
+    }
+
+    // pass onchain resolve deadline of all onchain resolved pays
+    // but not pass the last pay resolve deadline
+    let block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + 6, accounts[0]);
+
+    // intend settle
+    tx = await instance.intendSettle(signedSimplexStateArrayBytes);
+    fs.appendFileSync(GAS_USED_LOG, 'intendSettle() with one non-null simplex state with 2 payments: ' + getCallGasUsed(tx) + '\n');
+
+    block = await web3.eth.getBlock('latest');
+    const settleFinalizedTime = await instance.getSettleFinalizedTime(channelId);
+    const expectedSingleSettleFinalizedTime = DISPUTE_TIMEOUT + block.number;
+    assert.equal(expectedSingleSettleFinalizedTime.toString(), settleFinalizedTime.toString());
+
+    const status = await instance.getChannelStatus(channelId);
+    assert.equal(status, 2);
+
+    for (let i = 0; i < 2; i++) {  // for each pays in head PayIdList
+      assert.equal(tx.logs[i].event, 'ClearOnePay');
+      assert.equal(tx.logs[i].args.channelId, channelId);
+      const payHash = sha3(web3.utils.bytesToHex(payIdListInfo.payBytesArray[0][i]));
+      const payId = calculatePayId(payHash, payResolver.address);
+      assert.equal(tx.logs[i].args.payId, payId);
+      assert.equal(tx.logs[i].args.peerFrom, peers[0]);
+      assert.equal(tx.logs[i].args.amount, 0);
+    }
+
+    assert.equal(tx.logs[2].event, 'IntendSettle');
+    assert.equal(tx.logs[2].args.channelId, channelId);
+    assert.equal(tx.logs[2].args.seqNums.toString(), [5, 0]);
+
+    const peersMigrationInfo = await instance.getPeersMigrationInfo(channelId);
+    // updated transferOut map with cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[4].toString(), [10, 0]);
+    // updated pendingPayOut map without cleared pays in the head PayIdList
+    assert.equal(peersMigrationInfo[5].toString(), [0, 0]);
   });
 });
 

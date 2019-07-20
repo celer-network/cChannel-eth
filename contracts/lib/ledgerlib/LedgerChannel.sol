@@ -304,7 +304,8 @@ library LedgerChannel {
      * @param _c the channel to be viewed
      * @param _fromLedgerAddr old ledger address to import channel config from
      * @param _channelId ID of the channel to be viewed
-     * @dev related to Ledger Migration
+     * @dev related to Ledger Migration. Do not migrate WithdrawIntent, in other
+     *   words, migration will implicitly veto pending WithdrawIntent if any.
      */
     function _importChannelMigrationArgs(
         LedgerStruct.Channel storage _c,
@@ -478,21 +479,17 @@ library LedgerChannel {
      * @param _c the channel
      * @param _receiver receiver of this new withdrawal
      * @param _amount amount of this new withdrawal
-     * @param _checkBalance check the balance if this is true
      */
     function _addWithdrawal(
         LedgerStruct.Channel storage _c,
         address _receiver,
-        uint _amount,
-        bool _checkBalance
+        uint _amount
     )
         internal
     {
         // this implicitly require receiver be a peer
         uint rid = _getPeerId(_c, _receiver);
         _c.peerProfiles[rid].withdrawal = _c.peerProfiles[rid].withdrawal.add(_amount);
-        if (_checkBalance) {
-            require(getTotalBalance(_c) >= 0);
-        }
+        require(getTotalBalance(_c) >= 0);
     }
 }

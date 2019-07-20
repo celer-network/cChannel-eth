@@ -19,9 +19,9 @@ const PayRegistry = artifacts.require('PayRegistry');
 const PayResolver = artifacts.require('PayResolver');
 const VirtResolver = artifacts.require('VirtContractResolver');
 
-const GAS_USED_LOG = 'gas_used_logs/PayRegistry.txt';
+const GAS_USED_LOG = 'gas_used_logs/PayResolver.txt';
 
-contract('PayRegistry', async accounts => {
+contract('PayResolver', async accounts => {
   const peers = getSortedArray([accounts[0], accounts[1]]);
   const TRUE_PREIMAGE = '0x123456';
   const FALSE_PREIMAGE = '0x654321';

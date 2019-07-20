@@ -1,7 +1,7 @@
 ********** Gas Used in EthPool Tests **********
 
 ***** Deploy Gas Used *****
-EthPool Deploy Gas: 851586
+EthPool Deploy Gas: 811674
 ***** Function Calls Gas Used *****
 deposit(): 45163
 withdraw(): 21845

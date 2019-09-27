@@ -2,11 +2,11 @@
 
 batch size,	used gas
 1	109083
-11	966641
+11	966513
 21	1823943
-31	2681309
-41	3538675
+31	2681245
+41	3538547
 
-Linear regression result: gasUsed = 85738.52 * batchSize + 23421.28
+Linear regression result: gasUsed = 85736.6 * batchSize + 23397.6
 Max batch size of deposit ETH in batch is: 93
 Coefficient of determination (R^2) is: 1

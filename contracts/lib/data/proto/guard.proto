@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+//option go_package = "github.com/celer-network/goCeler/guard";
+package guard;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FieldOptions {
+    string soltype = 1002;
+}
+
+message Node {
+    repeated bytes childs = 1;
+}
+
+message Proof {
+    repeated Node nodes = 1;
+}
+
+message Punishment {
+    repeated bytes guardians = 1 [(soltype) = "address"];
+    bytes client = 2 [(soltype) = "address"];
+}

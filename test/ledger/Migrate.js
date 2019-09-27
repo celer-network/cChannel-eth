@@ -32,7 +32,7 @@ const PayResolver = artifacts.require('PayResolver');
 contract('CelerLedger migration', async accounts => {
     const ETH_ADDR = '0x0000000000000000000000000000000000000000';
     const DISPUTE_TIMEOUT = 20;
-    const GAS_USED_LOG = 'gas_used_logs/CelerChannel-Migrate.txt';
+    const GAS_USED_LOG = 'gas_used_logs/CelerLedger-Migrate.txt';
     // the meaning of the index: [peer index][pay hash list index][pay index]
     const PEERS_PAY_HASH_LISTS_AMTS = [[[1, 2]], [[3, 4]]];
 

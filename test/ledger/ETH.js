@@ -35,7 +35,7 @@ contract('CelerLedger using ETH', async accounts => {
   const ETH_ADDR = '0x0000000000000000000000000000000000000000';
   const ZERO_ADDR = ETH_ADDR;
   const DISPUTE_TIMEOUT = 20;
-  const GAS_USED_LOG = 'gas_used_logs/CelerChannel-ETH.txt';
+  const GAS_USED_LOG = 'gas_used_logs/CelerLedger-ETH.txt';
   // the meaning of the index: [peer index][pay hash list index][pay index]
   const PEERS_PAY_HASH_LISTS_AMTS = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
 
@@ -2330,6 +2330,85 @@ contract('CelerLedger using ETH', async accounts => {
     assert.equal(peersMigrationInfo[4].toString(), [10, 0]);
     // updated pendingPayOut map without cleared pays in the head PayIdList
     assert.equal(peersMigrationInfo[5].toString(), [0, 0]);
+  });
+
+  it('should fail to intendSettle an Operable channel for a nonpeer', async () => {
+    // open a new channel
+    await ethPool.approve(instance.address, 200, { from: peers[1] });
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    let tx = await instance.openChannel(openChannelRequest, { value: 100 });
+    channelId = tx.logs[0].args.channelId.toString();
+
+    singleSignedNullStateBytes = await getSignedSimplexStateArrayBytes({
+      channelIds: [channelId],
+      seqNums: [0],
+      signers: [peers[0]],
+      totalPendingAmounts: [0]
+    });
+
+    try {
+      await instance.intendSettle(singleSignedNullStateBytes, {
+        from: accounts[2]
+      });
+    } catch (error) {
+      assert.isAbove(
+        error.message.search('Nonpeer channel status error'),
+        -1
+      );
+      return;
+    }
+
+    assert.fail('should have thrown before');
+  });
+
+  it('should intendSettle a Settling channel correctly for a nonpeer', async () => {
+    // open a new channel
+    await ethPool.approve(instance.address, 200, { from: peers[1] });
+    const request = await getOpenChannelRequest({
+      openDeadline: uniqueOpenDeadline++,
+      disputeTimeout: DISPUTE_TIMEOUT
+    });
+    const openChannelRequest = web3.utils.bytesToHex(request.openChannelRequestBytes);
+    let tx = await instance.openChannel(openChannelRequest, { value: 100 });
+    channelId = tx.logs[0].args.channelId.toString();
+
+    singleSignedNullStateBytes = await getSignedSimplexStateArrayBytes({
+      channelIds: [channelId],
+      seqNums: [0],
+      signers: [peers[0]],
+      totalPendingAmounts: [0]
+    });
+
+    // peer intend settle first
+    await instance.intendSettle(singleSignedNullStateBytes);
+
+    // nonpeer intend settle
+    const result = await getCoSignedIntendSettle(
+      getPayIdListInfo,
+      getSignedSimplexStateArrayBytes,
+      [channelId, channelId],
+      PEERS_PAY_HASH_LISTS_AMTS,
+      [1, 1],  // seqNums
+      [2, 2],  // lastPayResolveDeadlines
+      [10, 20],  // transferAmounts
+      payResolver.address  // payResolverAddr
+    );
+    const signedSimplexStateArrayBytes = result.signedSimplexStateArrayBytes;
+
+    // ensure it passes the last pay resolve deadline
+    let block = await web3.eth.getBlock('latest');
+    await mineBlockUntil(block.number + 2, accounts[0]);
+
+    // intend settle
+    tx = await instance.intendSettle(signedSimplexStateArrayBytes);
+
+    assert.equal(tx.logs[4].event, 'IntendSettle');
+    assert.equal(tx.logs[4].args.channelId, channelId);
+    assert.equal(tx.logs[4].args.seqNums.toString(), [1, 1]);
   });
 });
 

@@ -9,24 +9,15 @@ import "./lib/interface/ICelerWallet.sol";
 import "./lib/interface/IEthPool.sol";
 import "./lib/interface/IPayRegistry.sol";
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
-/**
- * @title CelerLedger wrapper contract
- * @notice A wrapper contract using libraries to provide CelerLedger's APIs.
- * @notice Ownable contract and LedgerBalanceLimit library should only be used
- *   in the initial stage of the mainnet operation for a very short period of
- *   time to limit the balance amount that can be deposit into each channel,
- *   so that any losses due to unknown bugs (if any) will be limited. The balance
- *   limits should be disabled and the owner account of CelerLedger should renounce
- *   its ownership after the system is stable and comprehensively audited.
- */
-contract CelerLedger is ICelerLedger, Ownable {
-    using LedgerOperation for LedgerStruct.Ledger;
-    using LedgerBalanceLimit for LedgerStruct.Ledger;
-    using LedgerMigrate for LedgerStruct.Ledger;
+contract CelerLedgerMock {
+    using SafeMath for uint;
     using LedgerChannel for LedgerStruct.Channel;
 
     LedgerStruct.Ledger private ledger;
+    bytes32 public tmpChannelId;
+    bytes32[] public tmpChannelIds;
 
     /**
      * @notice CelerLedger constructor
@@ -41,33 +32,27 @@ contract CelerLedger is ICelerLedger, Ownable {
         ledger.balanceLimitsEnabled = true;
     }
 
-    /**
-     * @notice Set the per-channel balance limits of given tokens
-     * @param _tokenAddrs addresses of the tokens (address(0) is for ETH)
-     * @param _limits balance limits of the tokens
-     */
-    function setBalanceLimits(
-        address[] calldata _tokenAddrs,
-        uint[] calldata _limits
+    function openChannelMockSet(
+        bytes32 _channelId,
+        uint _disputeTimeout,
+        address _tokenAddress,
+        uint _tokenType,
+        address[2] calldata _peerAddrs,
+        uint[2] calldata _deposits
     )
         external
-        onlyOwner
     {
-        ledger.setBalanceLimits(_tokenAddrs, _limits);
-    }
+        tmpChannelId = _channelId;
 
-    /**
-     * @notice Disable balance limits of all tokens
-     */
-    function disableBalanceLimits() external onlyOwner {
-        ledger.disableBalanceLimits();
-    }
-
-    /**
-     * @notice Enable balance limits of all tokens
-     */
-    function enableBalanceLimits() external onlyOwner {
-        ledger.enableBalanceLimits();
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        c.disputeTimeout = _disputeTimeout;
+        _updateChannelStatus(c, LedgerStruct.ChannelStatus.Operable);
+        c.token.tokenAddress = _tokenAddress;
+        c.token.tokenType = PbEntity.TokenType(_tokenType);
+        c.peerProfiles[0].peerAddr = _peerAddrs[0];
+        c.peerProfiles[0].deposit = _deposits[0];
+        c.peerProfiles[1].peerAddr = _peerAddrs[1];
+        c.peerProfiles[1].deposit = _deposits[1];
     }
 
     /**
@@ -75,7 +60,23 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _openRequest bytes of open channel request message
      */
     function openChannel(bytes calldata _openRequest) external payable {
-        ledger.openChannel(_openRequest);
+        LedgerStruct.Channel storage c = ledger.channelMap[tmpChannelId];
+        address[2] memory peerAddrs = [
+            c.peerProfiles[0].peerAddr,
+            c.peerProfiles[1].peerAddr
+        ];
+        uint[2] memory amounts = [
+            c.peerProfiles[0].deposit,
+            c.peerProfiles[1].deposit
+        ];
+
+        emit OpenChannel(
+            tmpChannelId,
+            uint(c.token.tokenType),
+            c.token.tokenAddress,
+            peerAddrs,
+            amounts
+        );
     }
 
     /**
@@ -93,32 +94,39 @@ contract CelerLedger is ICelerLedger, Ownable {
     )
         external payable
     {
-        ledger.deposit(_channelId, _receiver, _transferFromAmount);
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        uint rid = c._getPeerId(_receiver);
+        uint amount = _transferFromAmount.add(msg.value);
+        c.peerProfiles[rid].deposit = c.peerProfiles[rid].deposit.add(amount);
+
+        (
+            address[2] memory peerAddrs,
+            uint[2] memory deposits,
+            uint[2] memory withdrawals
+        ) = c.getBalanceMap();
+        emit Deposit(_channelId, peerAddrs, deposits, withdrawals);
     }
 
-    /**
-     * @notice Deposit ETH via EthPool or ERC20 tokens into the channel
-     * @dev do not support sending ETH in msg.value for function simplicity.
-     *   Index in three arrays should match.
-     * @param _channelIds IDs of the channels
-     * @param _receivers addresses of the receivers
-     * @param _transferFromAmounts amounts of funds to be transfered from EthPool for ETH
-     *   or ERC20 contract for ERC20 tokens
-     */
-    function depositInBatch(
+    function snapshotStatesMockSet(
         bytes32[] calldata _channelIds,
-        address[] calldata _receivers,
-        uint[] calldata _transferFromAmounts
+        address[] calldata _peerFroms,
+        uint[] calldata _seqNums,
+        uint[] calldata _transferOuts,
+        uint[] calldata _pendingPayOuts
     )
         external
     {
-        require(
-            _channelIds.length == _receivers.length && _receivers.length == _transferFromAmounts.length,
-            "Lengths do not match"
-        );
         for (uint i = 0; i < _channelIds.length; i++) {
-            ledger.deposit(_channelIds[i], _receivers[i], _transferFromAmounts[i]);
+            LedgerStruct.Channel storage c = ledger.channelMap[_channelIds[i]];
+            uint peerFromId = c._getPeerId(_peerFroms[i]);
+            LedgerStruct.PeerState storage state = c.peerProfiles[peerFromId].state;
+            
+            state.seqNum = _seqNums[i];
+            state.transferOut = _transferOuts[i];
+            state.pendingPayOut = _pendingPayOuts[i];
         }
+
+        tmpChannelIds = _channelIds;
     }
 
     /**
@@ -132,7 +140,29 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _signedSimplexStateArray bytes of SignedSimplexStateArray message
      */
     function snapshotStates(bytes calldata _signedSimplexStateArray) external {
-        ledger.snapshotStates(_signedSimplexStateArray);
+        for (uint i = 0; i < tmpChannelIds.length; i++) {
+            LedgerStruct.Channel storage c = ledger.channelMap[tmpChannelIds[i]];
+                emit SnapshotStates(tmpChannelIds[i], c._getStateSeqNums());
+        }
+    }
+
+    function intendWithdrawMockSet(
+        bytes32 _channelId,
+        uint _amount,
+        bytes32 _recipientChannelId,
+        address _receiver
+    )
+        external
+    {
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        LedgerStruct.WithdrawIntent storage withdrawIntent = c.withdrawIntent;
+
+        withdrawIntent.receiver = _receiver;
+        withdrawIntent.amount = _amount;
+        withdrawIntent.requestTime = block.number;
+        withdrawIntent.recipientChannelId = _recipientChannelId;
+
+        tmpChannelId = _channelId;
     }
 
     /**
@@ -144,7 +174,9 @@ contract CelerLedger is ICelerLedger, Ownable {
      *   otherwise deposit to receiver address in the recipient channel
      */
     function intendWithdraw(bytes32 _channelId, uint _amount, bytes32 _recipientChannelId) external {
-        ledger.intendWithdraw(_channelId, _amount, _recipientChannelId);
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+
+        emit IntendWithdraw(_channelId, c.withdrawIntent.receiver, _amount);
     }
 
     /**
@@ -153,7 +185,17 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _channelId ID of the channel
      */
     function confirmWithdraw(bytes32 _channelId) external {
-        ledger.confirmWithdraw(_channelId);
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+
+        address receiver = c.withdrawIntent.receiver;
+        uint amount = c.withdrawIntent.amount;
+        bytes32 recipientChannelId = c.withdrawIntent.recipientChannelId;
+        delete c.withdrawIntent;
+
+        c._addWithdrawal(receiver, amount);
+        
+        (, uint[2] memory deposits, uint[2] memory withdrawals) = c.getBalanceMap();
+        emit ConfirmWithdraw(_channelId, amount, receiver, recipientChannelId, deposits, withdrawals);
     }
 
     /**
@@ -163,15 +205,41 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _channelId ID of the channel
      */
     function vetoWithdraw(bytes32 _channelId) external {
-        ledger.vetoWithdraw(_channelId);
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        require(c.status == LedgerStruct.ChannelStatus.Operable, "Channel status error");
+        require(c.withdrawIntent.receiver != address(0), "No pending withdraw intent");
+        require(c._isPeer(msg.sender), "msg.sender is not peer");
+
+        delete c.withdrawIntent;
+
+        emit VetoWithdraw(_channelId);
     }
 
-    /**
-     * @notice Cooperatively withdraw specific amount of balance
-     * @param _cooperativeWithdrawRequest bytes of cooperative withdraw request message
-     */
-    function cooperativeWithdraw(bytes calldata _cooperativeWithdrawRequest) external {
-        ledger.cooperativeWithdraw(_cooperativeWithdrawRequest);
+    // only support intendSettle with one state for mock tests
+    function intendSettleMockSet(
+        bytes32 _channelId,
+        address _peerFrom,
+        uint _seqNum,
+        uint _transferOut,
+        bytes32 _nextPayIdListHash,
+        uint _lastPayResolveDeadline,
+        uint _pendingPayOut
+    )
+        external
+    {
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        uint peerFromId = c._getPeerId(_peerFrom);
+        LedgerStruct.PeerState storage state = c.peerProfiles[peerFromId].state;
+
+        state.seqNum = _seqNum;
+        state.transferOut = _transferOut;
+        state.nextPayIdListHash = _nextPayIdListHash;
+        state.lastPayResolveDeadline = _lastPayResolveDeadline;
+        state.pendingPayOut = _pendingPayOut;
+
+        _updateOverallStatesByIntendState(_channelId);
+
+        tmpChannelId = _channelId;
     }
 
     /**
@@ -184,23 +252,13 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _signedSimplexStateArray bytes of SignedSimplexStateArray message
      */
     function intendSettle(bytes calldata _signedSimplexStateArray) external {
-        ledger.intendSettle(_signedSimplexStateArray);
+        LedgerStruct.Channel storage c = ledger.channelMap[tmpChannelId];
+
+        emit IntendSettle(tmpChannelId, c._getStateSeqNums());
     }
 
-    /**
-     * @notice Read payment results and add results to corresponding simplex payment channel
-     * @param _channelId ID of the channel
-     * @param _peerFrom address of the peer who send out funds
-     * @param _payIdList bytes of a pay hash list
-     */
-    function clearPays(
-        bytes32 _channelId,
-        address _peerFrom,
-        bytes calldata _payIdList
-    )
-        external
-    {
-        ledger.clearPays(_channelId, _peerFrom, _payIdList);
+    function intendSettleRevert(bytes calldata _signedSimplexStateArray) external {
+        revert();
     }
 
     /**
@@ -209,33 +267,17 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @param _channelId ID of the channel
      */
     function confirmSettle(bytes32 _channelId) external {
-        ledger.confirmSettle(_channelId);
-    }
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        (bool validBalance, uint[2] memory settleBalance) = c._validateSettleBalance();
+        if (!validBalance) {
+            _resetDuplexState(c);
+            emit ConfirmSettleFail(_channelId);
+            return;
+        }
 
-    /**
-     * @notice Cooperatively settle the channel
-     * @param _settleRequest bytes of cooperative settle request message
-     */
-    function cooperativeSettle(bytes calldata _settleRequest) external {
-        ledger.cooperativeSettle(_settleRequest);
-    }
+        _updateChannelStatus(c, LedgerStruct.ChannelStatus.Closed);
 
-    /**
-     * @notice Migrate a channel from this CelerLedger to a new CelerLedger
-     * @param _migrationRequest bytes of migration request message
-     * @return migrated channel id
-     */
-    function migrateChannelTo(bytes calldata _migrationRequest) external returns(bytes32) {
-        return ledger.migrateChannelTo(_migrationRequest);
-    }
-
-    /**
-     * @notice Migrate a channel from an old CelerLedger to this CelerLedger
-     * @param _fromLedgerAddr the old ledger address to migrate from
-     * @param _migrationRequest bytes of migration request message
-     */
-    function migrateChannelFrom(address _fromLedgerAddr, bytes calldata _migrationRequest) external {
-        ledger.migrateChannelFrom(_fromLedgerAddr, _migrationRequest);
+        emit ConfirmSettle(_channelId, settleBalance);
     }
 
     /**
@@ -458,7 +500,7 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @return channel number of the status
      */
     function getChannelStatusNum(uint _channelStatus) external view returns(uint) {
-        return ledger.getChannelStatusNum(_channelStatus);
+        return ledger.channelStatusNums[_channelStatus];
     }
 
     /**
@@ -466,7 +508,7 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @return EthPool address
      */
     function getEthPool() external view returns(address) {
-        return ledger.getEthPool();
+        return address(ledger.ethPool);
     }
 
     /**
@@ -474,7 +516,7 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @return PayRegistry address
      */
     function getPayRegistry() external view returns(address) {
-        return ledger.getPayRegistry();
+        return address(ledger.payRegistry);
     }
 
     /**
@@ -482,7 +524,7 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @return CelerWallet address
      */
     function getCelerWallet() external view returns(address) {
-        return ledger.getCelerWallet();
+        return address(ledger.celerWallet);
     }
 
     /**
@@ -491,7 +533,7 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @return token balance limit
      */
     function getBalanceLimit(address _tokenAddr) external view returns(uint) {
-        return ledger.getBalanceLimit(_tokenAddr);
+        return ledger.balanceLimits[_tokenAddr];
     }
 
     /**
@@ -499,6 +541,107 @@ contract CelerLedger is ICelerLedger, Ownable {
      * @return balanceLimitsEnabled
      */
     function getBalanceLimitsEnabled() external view returns(bool) {
-        return ledger.getBalanceLimitsEnabled();
+        return ledger.balanceLimitsEnabled;
     }
+
+    /**
+     * @notice Update status of a channel
+     * @param _c the channel
+     * @param _newStatus new channel status
+     */
+    function _updateChannelStatus(
+        LedgerStruct.Channel storage _c,
+        LedgerStruct.ChannelStatus _newStatus
+    )
+        internal
+    {
+        if (_c.status == _newStatus) {
+            return;
+        }
+
+        // update counter of old status
+        if (_c.status != LedgerStruct.ChannelStatus.Uninitialized) {
+            ledger.channelStatusNums[uint(_c.status)] = ledger.channelStatusNums[uint(_c.status)].sub(1);
+        }
+
+        // update counter of new status
+        ledger.channelStatusNums[uint(_newStatus)] = ledger.channelStatusNums[uint(_newStatus)].add(1);
+
+        _c.status = _newStatus;
+    }
+
+    function _updateOverallStatesByIntendState(
+        bytes32 _channelId
+    )
+        internal
+    {
+        LedgerStruct.Channel storage c = ledger.channelMap[_channelId];
+        c.settleFinalizedTime = block.number.add(c.disputeTimeout);
+        _updateChannelStatus(c, LedgerStruct.ChannelStatus.Settling);
+    }
+
+    /**
+     * @notice Reset the state of the channel
+     * @param _c the channel
+     */
+    function _resetDuplexState(
+        LedgerStruct.Channel storage _c
+    )
+        internal
+    {
+        delete _c.settleFinalizedTime;
+        _updateChannelStatus(_c, LedgerStruct.ChannelStatus.Operable);
+        delete _c.peerProfiles[0].state;
+        delete _c.peerProfiles[1].state;
+        // reset possibly remaining WithdrawIntent freezed by previous intendSettle()
+        delete _c.withdrawIntent;
+    }
+
+    /***** events *****/
+    event OpenChannel(
+        bytes32 indexed channelId,
+        uint tokenType,
+        address indexed tokenAddress,
+        // TODO: there is an issue of setting address[2] as indexed. Need to fix and make this indexed
+        address[2] peerAddrs,
+        uint[2] initialDeposits
+    );
+
+    // TODO: there is an issue of setting address[2] as indexed. Need to fix and make this indexed
+    event Deposit(bytes32 indexed channelId, address[2] peerAddrs, uint[2] deposits, uint[2] withdrawals);
+
+    event SnapshotStates(bytes32 indexed channelId, uint[2] seqNums);
+
+    event IntendSettle(bytes32 indexed channelId, uint[2] seqNums);
+
+    event ClearOnePay(bytes32 indexed channelId, bytes32 indexed payId, address indexed peerFrom, uint amount);
+
+    event ConfirmSettle(bytes32 indexed channelId, uint[2] settleBalance);
+
+    event ConfirmSettleFail(bytes32 indexed channelId);
+
+    event IntendWithdraw(bytes32 indexed channelId, address indexed receiver, uint amount);
+
+    event ConfirmWithdraw(
+        bytes32 indexed channelId,
+        uint withdrawnAmount,
+        address indexed receiver,
+        bytes32 indexed recipientChannelId,
+        uint[2] deposits,
+        uint[2] withdrawals
+    );
+
+    event VetoWithdraw(bytes32 indexed channelId);
+
+    event CooperativeWithdraw(
+        bytes32 indexed channelId,
+        uint withdrawnAmount,
+        address indexed receiver,
+        bytes32 indexed recipientChannelId,
+        uint[2] deposits,
+        uint[2] withdrawals,
+        uint seqNum
+    );
+
+    event CooperativeSettle(bytes32 indexed channelId, uint[2] settleBalance);
 }

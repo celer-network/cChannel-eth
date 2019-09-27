@@ -6,6 +6,6 @@ EthPool Deploy Gas: 811674
 deposit(): 45163
 withdraw(): 21845
 approve(): 45422
-transferFrom(): 71431
+transferFrom(): 71367
 increaseAllowance(): 31008
 decreaseAllowance(): 30953

@@ -8,7 +8,7 @@ import "openzeppelin-solidity/contracts/lifecycle/Pausable.sol";
 
 /**
  * @title CelerWallet contract
- * @notice A multi-owner, multi-token, operator-centric wallet designed for CelerChannel.
+ * @notice A multi-owner, multi-token, operator-centric wallet designed for CelerLedger.
  *   This wallet can run independetly and doesn't rely on trust of any external contracts
  *   even CelerLedger to maximize its security.
  * @notice Pausable contract and drainToken() function should only be used for handling

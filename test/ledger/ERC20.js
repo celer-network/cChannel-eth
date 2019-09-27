@@ -34,7 +34,7 @@ const PayResolver = artifacts.require('PayResolver');
 contract('CelerLedger using ERC20', async accounts => {
   const ZERO_CHANNELID = "0x0000000000000000000000000000000000000000000000000000000000000000";
   const DISPUTE_TIMEOUT = 20;
-  const GAS_USED_LOG = 'gas_used_logs/CelerChannel-ERC20.txt';
+  const GAS_USED_LOG = 'gas_used_logs/CelerLedger-ERC20.txt';
   // the meaning of the index: [peer index][pay hash list index][pay index]
   const PEERS_PAY_HASH_LISTS_AMTS = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
 

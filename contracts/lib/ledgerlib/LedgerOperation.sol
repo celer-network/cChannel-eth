@@ -397,11 +397,17 @@ library LedgerOperation {
         for (uint i = 0; i < simplexStatesNum; i++) {
             bytes32 currentChannelId = simplexState.channelId;
             LedgerStruct.Channel storage c = _self.channelMap[currentChannelId];
-            require(
-                c.status == LedgerStruct.ChannelStatus.Operable ||
-                c.status == LedgerStruct.ChannelStatus.Settling,
-                "Channel status error"
-            );
+            
+            if (c._isPeer(msg.sender)) {
+                require(
+                    c.status == LedgerStruct.ChannelStatus.Operable ||
+                    c.status == LedgerStruct.ChannelStatus.Settling,
+                    "Peer channel status error"
+                );
+            } else {
+                // A nonpeer cannot be the first one to call intendSettle
+                require(c.status == LedgerStruct.ChannelStatus.Settling, "Nonpeer channel status error");
+            }
             require(
                 c.settleFinalizedTime == 0 || block.number < c.settleFinalizedTime,
                 "Settle has already finalized"

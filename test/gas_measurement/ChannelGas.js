@@ -31,7 +31,12 @@ const PayRegistry = artifacts.require('PayRegistry');
 const PayResolver = artifacts.require('PayResolver');
 const ERC20ExampleToken = artifacts.require('ERC20ExampleToken');
 
-contract('Measure CelerChannel gas usage with fine granularity', async accounts => {
+contract('Measure CelerLedger gas usage with fine granularity', async accounts => {
+  // granularity parameters
+  const smallRange = 3;  // use 10 for fine granularity measurement
+  const largeRange = 0;  // use 5 for fine granularity measurement
+  const batchBound = 15;  // use 45 for fine granularity measurement
+
   const peers = getSortedArray([accounts[0], accounts[1]]);
   const clients = [accounts[8], accounts[9]];  // namely [src, dest]
   const DISPUTE_TIMEOUT = 999999999;
@@ -494,34 +499,31 @@ contract('Measure CelerChannel gas usage with fine granularity', async accounts 
 
   // small measurement range
   const stepSmall = 10;
-  const numSmall = 3;  // use 10 for fine granularity measurement
   const startSmall = 1;
   // large measurement range
   const stepLarge = 75;
-  const numLarge = 0;  // use 5 for fine granularity measurement
-  const startLarge = stepSmall * numSmall + startSmall;
+  const startLarge = stepSmall * smallRange + startSmall;
 
   // Operable channel status
-  for (let i = 0; i < numSmall; i++) {
+  for (let i = 0; i < smallRange; i++) {
     twoStatesSnapshotStates(i * stepSmall + startSmall);
   }
-  for (let i = 0; i < numLarge; i++) {
+  for (let i = 0; i < largeRange; i++) {
     twoStatesSnapshotStates(i * stepLarge + startLarge);
   }
 
   // Settling channel status
-  for (let i = 0; i < numSmall; i++) {
+  for (let i = 0; i < smallRange; i++) {
     oneStateIntendSettleAndClearPays(i * stepSmall + startSmall);
     twoStatesIntendSettle(i * stepSmall + startSmall);
   }
-  for (let i = 0; i < numLarge; i++) {
+  for (let i = 0; i < largeRange; i++) {
     oneStateIntendSettleAndClearPays(i * stepLarge + startLarge);
     twoStatesIntendSettle(i * stepLarge + startLarge);
   }
 
   // depositInBatch
-  const bound = 15;  // use 45 for fine granularity measurement
-  for (let i = 1; i < bound; i += 10) {
+  for (let i = 1; i < batchBound; i += 10) {
     depositInBatch(i);
   }
 });

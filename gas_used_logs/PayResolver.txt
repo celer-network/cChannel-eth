@@ -6,5 +6,5 @@ PayRegistry Deploy Gas: 835393
 PayResolver Deploy Gas: 2860785
 
 ***** Function Calls Gas Used *****
-resolvePaymentByConditions(): 149270
-resolvePaymentByVouchedResult(): 156015
+resolvePaymentByConditions(): 149334
+resolvePaymentByVouchedResult(): 156099

@@ -16,7 +16,7 @@
 ## Overview
 cChannel-eth is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
 
-For more details about cChannel and Celer Network, please refer to [Celer Network's official website](https://www.celer.network/).
+For more details about cChannel, please refer to [CelerCore technical documentation](https://www.celer.network/docs/celercore/channel/overview.html).
 
 ## Core Concepts
 * **Peers**: channel participants (only supports two-peer channel for now).

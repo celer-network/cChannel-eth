@@ -1,22 +1,19 @@
-# cChannel-eth
+# CelerPay state channel contracts
 
 [![Build Status](https://travis-ci.org/celer-network/cChannel-eth.svg?branch=master)](https://travis-ci.org/celer-network/cChannel-eth)
 
-* [Overview](https://github.com/celer-network/cChannel-eth#overview)
-* [Core Concepts](https://github.com/celer-network/cChannel-eth#core-concepts)
-* [Release Features](https://github.com/celer-network/cChannel-eth#release-features)
-* [Protocol Buffers Usage](https://github.com/celer-network/cChannel-eth#protocol-buffers-usage)
-* [Solidity Version](https://github.com/celer-network/cChannel-eth#solidity-version)
-* [Code Structure](https://github.com/celer-network/cChannel-eth#code-structure)
-	* [contracts folder](https://github.com/celer-network/cChannel-eth#contracts-folder)
-	* [test folder](https://github.com/celer-network/cChannel-eth#test-folder)
-* [Test cChannel-eth Locally](https://github.com/celer-network/cChannel-eth#test-cchannel-eth-locally)
-* [License](https://github.com/celer-network/cChannel-eth#license)
+* [Overview](#overview)
+* [Core Concepts](#core-concepts)
+* [Release Features](#release-features)
+* [Protocol Buffers](#protocol-buffers)
+* [Solidity Version](#solidity-version)
+* [Code Structure](#code-structure)
+* [Test Locally](#test-locally)
 
 ## Overview
-cChannel-eth is a collection of smart contracts acting as the binding of cChannel abstraction and compiles to EVM bytecode. Using these components and primitives, a network of state channels can be built and arbitrary applications with defined counterparties can run in highly scalable fashion without losing the trustless core of blockchain systems.
+CelerPay is a generalized payment network that supports efficient off-chain token transfer with the capbability to resolve arbitrary conditional dependency on on-chain verifiable states. This repo implements the CelerPay contracts on Ethereum. It includes a collection of smart contracts acting as the binding of core CelerPay abstractions and supporting modules. CeleryPay smart contracts only specify the interaction logic of two peers. A network of payment channels can be built using these single-hop primitives and protocols.
 
-For more details about cChannel, please refer to [CelerCore technical documentation](https://www.celer.network/docs/celercore/channel/overview.html).
+To learn more about Celer state channel network, please refer to the [CelerCore technical documentation](https://www.celer.network/docs/celercore/channel/overview.html). More specifically, [this page](https://www.celer.network/docs/celercore/channel/pay_contracts.html) gives a detailed description of our smart contract design, structure, and API flows.
 
 ## Core Concepts
 * **Peers**: channel participants (only supports two-peer channel for now).
@@ -57,7 +54,7 @@ For more details about cChannel, please refer to [CelerCore technical documentat
 * **Batch Multi-Payment Clearing**: clears *N* payments in one batch with a single on-chain transaction using PayIdList, which only requires O(1) on-chain storage and O(*n*/*N*) on-chain verifications to clear *n* payments.
 * **Cooperative Settle**: skips challenge period and settles a channel when both peers reach an agreement.
 
-## Protocol Buffers Usage
+## Protocol Buffers
 [Protocol Buffers (protobuf)](https://developers.google.com/protocol-buffers/) are "a language-neutral, platform-neutral extensible mechanism for serializing structured data" developed by Google.
 We leverage Protocol Buffers to define a series of blockchain-neutral generalized data structures, which can be seamlessly used in off-chain communication protocols and instantly extended to other blockchains that we will support.
 
@@ -76,7 +73,8 @@ The following is the main code structure of cChannel-eth:
 	* **data**: protobuf library for Solidity and original proto3 files.
 	* Some interface contracts.
 * **truffle**: truffle related contracts.
-* **CelerChannel.sol**: contract of cChannel.
+* **CelerLedger.sol**: contract of CelerLedger.
+* **CelerWallet.sol**: contract of CelerWallet.
 * **EthPool.sol**: an ETH wrapper and deposit pool providing ERC20-like APIs for ETH, which is used in the process of Single-transaction Channel Opening.
 * **PayRegistry.sol**: contract of pay registry.
 * **VirtContractResolver.sol**: contract of virtual contract resolver.
@@ -89,7 +87,7 @@ The following is the main code structure of cChannel-eth:
 * **PayRegistryTest.js**: unit tests for PayRegistry.
 * **VirtContractResolverTest.js**: unit tests for Virtual Contract Resolver.
 
-## Test cChannel-eth Locally
+## Test Locally
 1. Install node v10: [https://nodejs.org](https://nodejs.org).
 2. Go to cChannel-eth's root directory. 
 3. Install the node dependencies in the local node_modules folder. 
@@ -107,10 +105,4 @@ ganache-cli -l 8000000
 6. Use truffle to run tests of cChannel-eth contracts. 
 <pre>
 truffle test
-</pre> 
-
-<!-- ## Known Issues -->
-<!-- No known issues for now. -->
-
-## License
-You can view our [license here](https://github.com/celer-network/cChannel-eth/blob/master/LICENSE).
+</pre>

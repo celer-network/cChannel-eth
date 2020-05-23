@@ -1,3 +1,5 @@
+// Copyright 2018-2020 Celer Network
+
 syntax = "proto3";
 option go_package = "github.com/celer-network/goCeler/entity";
 
@@ -93,7 +95,7 @@ message TransferFunction {
 message ConditionalPay {
   // pay_timestamp is set by payment source, to ensure no same condpay between src-dst
   // global unique pay id used on-chain is computed as hash(hash(cond_pay), pay_resolver_address)
-  uint64 pay_timestamp = 1 [(soltype) = "uint"];
+  uint64 pay_timestamp = 1 [(soltype) = "uint", jstype = JS_STRING];
   // src and dest are public keys of payment sender and receiver used to vouch the payment result.
   // For simplicity, current off-chain backend implementation requires these two fields to be the
   // sender and receiver account addresses. With better off-chain communication protocols in the
